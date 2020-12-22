@@ -1,0 +1,269 @@
+#!/usr/bin/env python3
+
+import argparse
+import json
+import os
+import random
+import shutil
+import subprocess
+import sys
+
+# Prerequisites (must be on PATH):
+#   AWS CLI
+#   docker
+#   rr (including rr-collect-symbols.py)
+
+arg_parser = argparse.ArgumentParser()
+arg_parser.add_argument("-x", dest='echo_commands', action='store_true', help="Echo spawned command lines")
+arg_parser.add_argument("--no-pull", action='store_true', help="Don't try to pull under any circumstances")
+arg_parser.add_argument("--log", help="(debug|info|warn|error)=<file>: sets logging to the given level and writes the log to <file>.")
+arg_subparsers = arg_parser.add_subparsers(dest='subcommand')
+
+pull_subparser = arg_subparsers.add_parser("pull", help="Pull needed container images from Pernosco server. AWS credentials must be set in the environment.")
+
+build_subparser = arg_subparsers.add_parser("build", help="Build database for rr trace")
+build_subparser.add_argument("trace_dir", help="Directory of rr trace")
+build_subparser.add_argument("--skip-rr", help="Skip steps that require rr ('rr pack', 'rr-collect-symbols.py')")
+
+serve_subparser = arg_subparsers.add_parser("serve", help="Serve Pernosco UI for an rr trace and Pernosco database")
+serve_subparser.add_argument("trace_dir", help="Directory of rr trace")
+serve_subparser.add_argument("--storage", help="Use this directory to store persistent data (i.e. notebook data)")
+serve_subparser.add_argument("--sources", action="append", help="Add this directory to the list of directories accessible to the container for serving source files")
+
+args = arg_parser.parse_args()
+
+# Global command-line options
+log_level = None
+log_file = None
+
+if args.log:
+    parts = args.log.split('=', 1)
+    if len(parts) < 2:
+        print("Log option not understood: %s"%args.log, file=sys.stderr)
+        sys.exit(1)
+    log_level = parts[0]
+    log_file = parts[1]
+
+random.seed()
+
+with open(os.path.join(sys.path[0], "metadata.json"), "r") as f:
+    metadata = json.load(f)
+
+REPOSITORY_REGION = 'us-east-2'
+REPOSITORY_HOST = '643334553517.dkr.ecr.%s.amazonaws.com'%REPOSITORY_REGION
+BUILDER_REPOSITORY = '%s/customers/db-builder'%REPOSITORY_HOST
+SERVER_REPOSITORY = '%s/customers/app-server'%REPOSITORY_HOST
+BUILDER_IMAGE = "%s:%s"%(BUILDER_REPOSITORY, metadata['db_builder_revision'])
+SERVER_IMAGE = "%s:%s"%(SERVER_REPOSITORY, metadata['appserver_revision'])
+PERNOSCO_ISOLATED_NETWORK = "pernosco-isolated-network"
+
+def maybe_echo(cmd):
+    if args.echo_commands:
+        print(" ".join(cmd), file=sys.stderr)
+
+def check_docker_intalled():
+    if not shutil.which('docker'):
+        print("Please install docker", file=sys.stderr)
+        sys.exit(1)
+
+def check_access_credential(name):
+    if not name in os.environ:
+        print("%s must be set in environment. If you want to try out Pernosco on-premises and have not yet contacted us for credentials, contact inquiries@pernos.co."%name, file=sys.stderr)
+        sys.exit(1)
+
+def docker_login():
+    if not shutil.which('aws'):
+        print("Please install the AWS command-line tools using", file=sys.stderr)
+        print("  sudo pip3 install awscli --upgrade", file=sys.stderr)
+        print("(Distribution packages may fail due to https://github.com/aws/aws-cli/issues/2403.)", file=sys.stderr)
+        sys.exit(1)
+    check_access_credential('AWS_ACCESS_KEY_ID')
+    check_access_credential('AWS_SECRET_ACCESS_KEY')
+
+    cmd1 = ['aws', 'ecr', 'get-login-password', '--region', REPOSITORY_REGION]
+    cmd2 = ['docker', 'login', '--username', 'AWS', '--password-stdin', REPOSITORY_HOST]
+    maybe_echo(cmd1 + ["|"] + cmd2)
+    p1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
+    p2 = subprocess.Popen(cmd2, stdin=p1.stdout)
+    p1.stdout.close()
+    p2.communicate()
+    assert p2.returncode == 0
+
+def do_pull(image):
+    if args.no_pull:
+        print("Need to pull %s but --no-pull specified, aborting"%image, file=sys.stderr)
+        sys.exit(1)
+    cmd = ['docker', 'image', 'pull', image]
+    maybe_echo(cmd)
+    subprocess.check_call(cmd)
+
+def pull_cmd():
+    check_docker_intalled()
+    docker_login()
+    do_pull(BUILDER_IMAGE)
+    do_pull(SERVER_IMAGE)
+
+def pull_if_needed(image):
+    cmd = ['docker', 'image', 'inspect', image]
+    maybe_echo(cmd)
+    ret = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if ret == 0:
+        return
+    do_pull(image)
+
+def ensure_isolated_network_created():
+    cmd = ['docker', 'network', 'inspect', PERNOSCO_ISOLATED_NETWORK]
+    maybe_echo(cmd)
+    ret = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if ret == 0:
+        return
+    cmd = ['docker', 'network', 'create', PERNOSCO_ISOLATED_NETWORK, "--internal"]
+    maybe_echo(cmd)
+    subprocess.check_call(cmd)
+
+# Starts a container. We confine the container as much as possible.
+# The container is unable to connect to the outside world via its network,
+# but it can make arbitrary DNS requests. Unfortunately Docker doesn't
+# seem to give us a way to disable its internal DNS responder.
+# When 'network' is True, we create a network so the container can accept
+# incoming connections.
+def start_container(image, name, args, network=False, restart=False, env=[], mounts=[], entrypoint=None):
+    cmd = ['docker', 'run', '--detach', '--name', "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:]),
+           '--security-opt', 'seccomp=unconfined', '--tmpfs', '/tmp',
+           '--env', 'RUST_BACKTRACE=full']
+    if log_level:
+        cmd.extend(['--env', "RUST_LOG=%s"%log_level])
+    for e in env:
+        cmd.extend(['--env', e])
+    if entrypoint:
+        cmd.extend(['--entrypoint', entrypoint])
+    for mount in mounts:
+        cmd.extend(['--mount', 'type=bind,src=%s,dst=%s'%mount])
+    if network:
+        ensure_isolated_network_created()
+        cmd.extend(['--network', PERNOSCO_ISOLATED_NETWORK])
+    else:
+        cmd.extend(['--network', 'none'])
+    if restart:
+        cmd.extend(['--restart', 'on-failure'])
+    cmd.append(image)
+    cmd.extend(args)
+    maybe_echo(cmd)
+    return subprocess.check_output(cmd, encoding='utf-8').strip()
+
+def wait_for_container(container_id):
+    cmd = ['docker', 'wait', container_id]
+    maybe_echo(cmd)
+    try:
+        ret = int(subprocess.check_output(cmd, encoding='utf-8').rstrip())
+    except KeyboardInterrupt:
+        ret = -2
+        pass
+
+    if log_file:
+        cmd = ['docker', 'logs', container_id]
+        maybe_echo(cmd)
+        with open(log_file, "w") as f:
+            subprocess.check_call(cmd, stdout=f, stderr=subprocess.STDOUT)
+
+    cmd = ['docker', 'rm', '--force', '--volumes', container_id]
+    maybe_echo(cmd)
+    subprocess.check_call(cmd, stdout=subprocess.DEVNULL)
+    if ret:
+        print("Container %s exited with exit code %d"%(container_id, ret), file=sys.stderr)
+        if ret > 0:
+            sys.exit(ret)
+        sys.exit(1)
+
+def container_ip_address(container_id):
+    cmd = ['docker', 'inspect', container_id]
+    maybe_echo(cmd)
+    output = json.loads(subprocess.check_output(cmd))
+    return output[0]['NetworkSettings']['Networks'][PERNOSCO_ISOLATED_NETWORK]['IPAddress']
+
+def set_default_user_sources():
+    path = "%s/sources.user"%args.trace_dir
+    if os.path.exists(path):
+        return
+    default = [{'files': [{'url': '/sources/', 'at': '/'}]}]
+    with open(path, "w") as f:
+        json.dump(default, f)
+
+def rr_pack():
+    print("Running 'rr pack'...")
+    cmd = ['rr', 'pack', args.trace_dir]
+    maybe_echo(cmd)
+    subprocess.check_call(cmd)
+
+def rr_collect_symbols():
+    print("Running 'rr-collect-symbols.py'...")
+    cmd = ['rr-collect-symbols.py', args.trace_dir]
+    maybe_echo(cmd)
+    subprocess.check_call(cmd)
+
+def package_libthread_db():
+    for f in ['/usr/lib64/libthread_db.so',
+              '/usr/lib/x86_64-linux-gnu/libthread_db.so']:
+        if os.path.isfile(f):
+            os.makedirs('%s/files.system-debuginfo'%args.trace_dir, exist_ok=True)
+            print("Copying %s into trace..."%f)
+            dest = '%s/files.system-debuginfo/libthread_db.so'%args.trace_dir
+            if os.path.exists(dest):
+                os.remove(dest)
+            shutil.copyfile(f, dest)
+            # Make sure it's world-readable/executable so db-builder can load it
+            os.chmod(dest, 0o555)
+            break
+
+def build_cmd():
+    check_docker_intalled()
+    pull_if_needed(BUILDER_IMAGE)
+    if not args.skip_rr:
+        if not shutil.which('rr'):
+            print("Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
+            sys.exit(1)
+        if not shutil.which('rr-collect-symbols.py'):
+            print("Please install `rr` master and make sure rr-collect-symbols.py is on your $PATH.", file=sys.stderr)
+            sys.exit(1)
+        rr_pack()
+        rr_collect_symbols()
+    package_libthread_db()
+    set_default_user_sources()
+    cmd = ['chmod', '--quiet', '--recursive', 'ugo+rwX', args.trace_dir]
+    maybe_echo(cmd)
+    subprocess.call(cmd)
+    mounts = [(args.trace_dir, "/trace")]
+    container_args = ["on-prem", "/trace"]
+    container_id = start_container(BUILDER_IMAGE, "db_builder", container_args, entrypoint="db_builder", mounts=mounts)
+    wait_for_container(container_id)
+
+def serve_cmd():
+    check_docker_intalled()
+    pull_if_needed(SERVER_IMAGE)
+    mounts = [(args.trace_dir, "/pernosco/database,readonly")]
+    container_args = ["--standalone", "--serve-sources", "/sources"]
+    if args.storage:
+        cmd = ['chmod', '--quiet', '--recursive', 'ugo+rwX', args.storage]
+        maybe_echo(cmd)
+        subprocess.call(cmd)
+        mounts.append((args.storage, "/pernosco/storage"))
+        container_args.extend(["--app-storage", "/pernosco/storage"])
+    if args.sources:
+        for s in args.sources:
+            mounts.append((s, "/sources%s"%s))
+    env = ['APP_SERVER_IDLE_TIMEOUT=999999999',
+           'PERNOSCO_ENABLE_VARIABLES_ANNOTATIONS=0']
+    container_id = start_container(SERVER_IMAGE, "app_server", container_args,
+        env=env, network=True, restart=True, mounts=mounts)
+    ip_address = container_ip_address(container_id)
+    print("Appserver launched at http://%s:3000/index.html"%ip_address, flush=True);
+    wait_for_container(container_id)
+
+if args.subcommand == 'pull':
+    pull_cmd()
+elif args.subcommand == 'build':
+    build_cmd()
+elif args.subcommand == 'serve':
+    serve_cmd()
+else:
+    arg_parser.print_help()
