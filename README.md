@@ -40,7 +40,7 @@ Load that link in your Web browser to debug your recording. When done, press ctr
 
 ## Troubleshooting
 
-Pass `pernosco --log info=<log-file>` to capture a log. Pay attention to lines starting with `ERROR` or `WARN`. Contact [support](support@pernos.co) for assistance if necessary.
+Pass `pernosco --log info=<log-file>` to capture a log. Pay attention to lines starting with `ERROR` or `WARN`. Contact [support](mailto:support@pernos.co) for assistance if necessary.
 
 ## Updates
 
