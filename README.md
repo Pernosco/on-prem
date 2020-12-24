@@ -38,13 +38,17 @@ Appserver launched at http://172.29.0.2:3000/index.html
 ```
 Load that link in your Web browser to debug your recording. When done, press ctrl-C in the terminal to kill the client application.
 
+## Troubleshooting
+
+Pass `pernosco --log info=<log-file>` to capture a log. Pay attention to lines starting with `ERROR` or `WARN`. Contact [support](support@pernos.co) for assistance if necessary.
+
 ## Updates
 
 When you want to update Pernosco, pull new revisions from this git repository and then rerun `pernosco pull` (or, by default, `pernosco build` and `pernosco serve` will pull new images as needed).
 
 ## Confinement
 
-The Pernosco on-premises product comprises the builder and server containers and the `pernosco` script in this repository. The builder and server are closed-source but are confined to run with the minimum access to the outside world needed to do their work. That confinement is performed using `docker` as configured by the `pernosco` script, which is open-source for your inspection.
+The Pernosco on-premises product comprises the builder and server containers and the `pernosco` script in this repository. The builder and server are closed-source but are confined to run with the minimum access to the outside world needed to do their work. That confinement is performed using `docker` as configured by the `pernosco` script, which is open-source for your inspection (and, if necessary, modification).
 
 The containers require access to the outside world as follows:
 * The builder container requires read/write access to the trace directory subtree (due to `docker` limitations, this directory must be writeable by all users). It has no network access at all (but see below).
