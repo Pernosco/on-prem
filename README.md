@@ -11,7 +11,7 @@ Make sure the AWS CLI tools are installed and on your `$PATH`. Distribution pack
 sudo pip3 install awscli --upgrade
 ```
 
-Make sure `docker` is installed and on your `$PATH`. Make sure [rr](https://rr-project.org) is installed and on your path (and that `rr-collect-symbols.py` is on your `$PATH` too).
+Make sure a relatively recent `docker` is installed and on your `$PATH`. Make sure [rr](https://rr-project.org) 5.4.0 or higher is installed and on your path (and that `rr-collect-symbols.py` is on your `$PATH` too).
 
 Clone this respository and make sure the `pernosco` script is on your `$PATH`.
 
@@ -44,7 +44,7 @@ Pass `pernosco --log info=<log-file>` to capture a log. Pay attention to lines s
 
 ## Updates
 
-When you want to update Pernosco, pull new revisions from this git repository and then rerun `pernosco pull` (or, by default, `pernosco build` and `pernosco serve` will pull new images as needed).
+When you want to update Pernosco, pull new revisions from this git repository and then rerun `pernosco pull`.
 
 ## Confinement
 
