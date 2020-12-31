@@ -235,7 +235,7 @@ def build_cmd():
     subprocess.call(cmd)
     mounts = [(args.trace_dir, "/trace")]
     container_args = ["on-prem", "/trace"]
-    env = []
+    env = {}
     if args.builder_rr_log:
         env['RR_LOG'] = args.builder_rr_log
     container_id = start_container(BUILDER_IMAGE, "db_builder", container_args,
