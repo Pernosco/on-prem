@@ -150,13 +150,17 @@ def start_container(image, name, args, network=False, restart=False, env=[], mou
     cmd.append(image)
     cmd.extend(args)
     maybe_echo(cmd)
-    return subprocess.check_output(cmd, encoding='utf-8').strip()
+    # Avoid using 'encoding' parameter to check_output because it was only
+    # added in Python 3.6.
+    return subprocess.check_output(cmd).decode().strip()
 
 def wait_for_container(container_id):
     cmd = ['docker', 'wait', container_id]
     maybe_echo(cmd)
     try:
-        ret = int(subprocess.check_output(cmd, encoding='utf-8').rstrip())
+        # Avoid using 'encoding' parameter to check_output because it was only
+        # added in Python 3.6.
+        ret = int(subprocess.check_output(cmd).decode().rstrip())
     except KeyboardInterrupt:
         ret = -2
         pass
