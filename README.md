@@ -61,3 +61,8 @@ The containers require access to the outside world as follows:
 This confinement largely ensures our containers can't modify or leak data even if they were malicious, but technical limitations mean that confinement is not 100% watertight. Known issues:
 * `docker` runs an embedded DNS server accessible to every container which [cannot be disabled](https://github.com/moby/moby/issues/19474). Thus in principle a malicious container could leak information to the outside world via DNS requests. This potential threat could be blocked by blocking DNS on the host.
 * Our Web client uses [CSP](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) to confine itself, preventing it from communicating with any Web servers other than the on-premises Pernosco server itself. However, since our Web client is sending the CSP header, a malicious client could stop doing that. This potential threat could be blocked by putting the Web client behind a proxy that forcibly adds the required CSP header.
+
+## Open-source licensing commitments
+
+The Pernosco on-prem packages derive from some GPLv3 code:
+* *gdb*: Sources available [here](https://github.com/Pernosco/binutils-gdb/tree/pernosco-gdb)
