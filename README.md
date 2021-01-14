@@ -65,4 +65,4 @@ This confinement largely ensures our containers can't modify or leak data even i
 ## Open-source licensing commitments
 
 The Pernosco on-prem packages derive from some GPLv3 code:
-* *gdb*: Sources available [here](https://github.com/Pernosco/binutils-gdb/tree/pernosco-gdb)
+* *gdb*: We include a gdb binary built from the sources [here](https://github.com/Pernosco/binutils-gdb/tree/pernosco-gdb)
