@@ -17,6 +17,7 @@ arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument("-x", dest='echo_commands', action='store_true', help="Echo spawned command lines")
 arg_parser.add_argument("--no-pull", action='store_true', help="Don't try to pull under any circumstances")
 arg_parser.add_argument("--log", help="(debug|info|warn|error):<file>: sets logging to the given level and writes the log to <file>.")
+arg_parser.add_argument("--user", help="Set a userid (name or numeric) to run the container as")
 arg_subparsers = arg_parser.add_subparsers(dest='subcommand')
 
 pull_subparser = arg_subparsers.add_parser("pull", help="Pull needed container images from Pernosco server. AWS credentials must be set in the environment.")
@@ -128,10 +129,12 @@ def ensure_isolated_network_created():
 # seem to give us a way to disable its internal DNS responder.
 # When 'network' is True, we create a network so the container can accept
 # incoming connections.
-def start_container(image, name, args, network=False, restart=False, env=[], mounts=[], entrypoint=None):
+def start_container(image, name, params, network=False, restart=False, env=[], mounts=[], entrypoint=None):
     cmd = ['docker', 'run', '--detach', '--name', "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:]),
            '--security-opt', 'seccomp=unconfined', '--tmpfs', '/tmp',
            '--env', 'RUST_BACKTRACE=full']
+    if args.user:
+        cmd.extend(['--user', args.user])
     if log_level:
         cmd.extend(['--env', "RUST_LOG=%s"%log_level])
     for e in env:
@@ -148,7 +151,7 @@ def start_container(image, name, args, network=False, restart=False, env=[], mou
     if restart:
         cmd.extend(['--restart', 'on-failure'])
     cmd.append(image)
-    cmd.extend(args)
+    cmd.extend(params)
     maybe_echo(cmd)
     # Avoid using 'encoding' parameter to check_output because it was only
     # added in Python 3.6.

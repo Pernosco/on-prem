@@ -100,7 +100,7 @@ server = None
 def start_server():
     global url
     global server
-    server = subprocess.Popen(['./pernosco', 'serve', '--storage', storage_dir,
+    server = subprocess.Popen(['./pernosco', '--user', '1200', 'serve', '--storage', storage_dir,
                                '--sources', testdir, '--sources', '/usr', trace_dir],
                                stdout=subprocess.PIPE, encoding='utf-8')
     url = None
@@ -119,7 +119,7 @@ record()
 
 subprocess.check_call(['./pernosco', 'pull'])
 
-subprocess.check_call(['./pernosco', 'build', trace_dir])
+subprocess.check_call(['./pernosco', '--user', '1200', 'build', trace_dir])
 
 os.mkdir(storage_dir)
 
