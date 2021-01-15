@@ -38,6 +38,8 @@ Appserver launched at http://172.29.0.2:3000/index.html
 ```
 Load that link in your Web browser to debug your recording. When done, press ctrl-C in the terminal to kill the client application.
 
+All directories and files created by Pernosco are world-readable/world-writeable, so be careful where you put them.
+
 ## Hardware requirements
 
 At minimum the machine running the builder and appserver needs CPU support for AVX (on Intel, Sandy Bridge or later). It needs to support any instructions used in the rr recording.
