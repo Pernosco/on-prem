@@ -16,7 +16,7 @@ import sys
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument("-x", dest='echo_commands', action='store_true', help="Echo spawned command lines")
 arg_parser.add_argument("--no-pull", action='store_true', help="Don't try to pull under any circumstances")
-arg_parser.add_argument("--log", help="(debug|info|warn|error)=<file>: sets logging to the given level and writes the log to <file>.")
+arg_parser.add_argument("--log", help="(debug|info|warn|error):<file>: sets logging to the given level and writes the log to <file>.")
 arg_subparsers = arg_parser.add_subparsers(dest='subcommand')
 
 pull_subparser = arg_subparsers.add_parser("pull", help="Pull needed container images from Pernosco server. AWS credentials must be set in the environment.")
@@ -38,7 +38,7 @@ log_level = None
 log_file = None
 
 if args.log:
-    parts = args.log.split('=', 1)
+    parts = args.log.split(':', 1)
     if len(parts) < 2:
         print("Log option not understood: %s"%args.log, file=sys.stderr)
         sys.exit(1)
