@@ -241,7 +241,7 @@ def build_cmd():
     maybe_echo(cmd)
     subprocess.call(cmd)
     mounts = [(args.trace_dir, "/trace")]
-    container_args = ["on-prem", "/trace"]
+    container_args = ["--empty-umask", "on-prem", "/trace"]
     env = {}
     if args.builder_rr_log:
         env['RR_LOG'] = args.builder_rr_log
@@ -253,7 +253,7 @@ def serve_cmd():
     check_docker_intalled()
     pull_if_needed(SERVER_IMAGE)
     mounts = [(args.trace_dir, "/pernosco/database,readonly")]
-    container_args = ["--standalone", "--serve-sources", "/sources"]
+    container_args = ["--empty-umask", "--standalone", "--serve-sources", "/sources"]
     if args.storage:
         cmd = ['chmod', '--quiet', '--recursive', 'ugo+rwX', args.storage]
         maybe_echo(cmd)
