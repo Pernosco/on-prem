@@ -23,12 +23,12 @@ arg_subparsers = arg_parser.add_subparsers(dest='subcommand')
 pull_subparser = arg_subparsers.add_parser("pull", help="Pull needed container images from Pernosco server. AWS credentials must be set in the environment.")
 
 build_subparser = arg_subparsers.add_parser("build", help="Build database for rr trace")
-build_subparser.add_argument("trace_dir", help="Directory of rr trace")
+build_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
 build_subparser.add_argument("--skip-rr", help="Skip steps that require host rr ('rr pack', 'rr-collect-symbols.py')")
 build_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to builder's rr")
 
 serve_subparser = arg_subparsers.add_parser("serve", help="Serve Pernosco UI for an rr trace and Pernosco database")
-serve_subparser.add_argument("trace_dir", help="Directory of rr trace")
+serve_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
 serve_subparser.add_argument("--storage", help="Use this directory to store persistent data (i.e. notebook data)")
 serve_subparser.add_argument("--sources", action="append", help="Add this directory to the list of directories accessible to the container for serving source files")
 
@@ -189,8 +189,18 @@ def container_ip_address(container_id):
     output = json.loads(subprocess.check_output(cmd))
     return output[0]['NetworkSettings']['Networks'][PERNOSCO_ISOLATED_NETWORK]['IPAddress']
 
+def trace_dir():
+    if args.trace_dir:
+        return args.trace_dir
+    if "_RR_TRACE_DIR" in os.environ:
+        return "%s/latest-trace"%os.environ['_RR_TRACE_DIR']
+    if "HOME" in os.environ:
+        return "%s/.local/share/rr/latest-trace"%os.environ['HOME']
+    print("Can't determine default trace dir", file=sys.stderr)
+    sys.exit(1)
+
 def set_default_user_sources():
-    path = "%s/sources.user"%args.trace_dir
+    path = "%s/sources.user"%trace_dir()
     if os.path.exists(path):
         return
     default = [{'files': [{'url': '/sources/', 'at': '/'}]}]
@@ -199,13 +209,13 @@ def set_default_user_sources():
 
 def rr_pack():
     print("Running 'rr pack'...")
-    cmd = ['rr', 'pack', args.trace_dir]
+    cmd = ['rr', 'pack', trace_dir()]
     maybe_echo(cmd)
     subprocess.check_call(cmd)
 
 def rr_collect_symbols():
     print("Running 'rr-collect-symbols.py'...")
-    cmd = ['rr-collect-symbols.py', args.trace_dir]
+    cmd = ['rr-collect-symbols.py', trace_dir()]
     maybe_echo(cmd)
     subprocess.check_call(cmd)
 
@@ -213,9 +223,9 @@ def package_libthread_db():
     for f in ['/usr/lib64/libthread_db.so',
               '/usr/lib/x86_64-linux-gnu/libthread_db.so']:
         if os.path.isfile(f):
-            os.makedirs('%s/files.system-debuginfo'%args.trace_dir, exist_ok=True)
+            os.makedirs('%s/files.system-debuginfo'%trace_dir(), exist_ok=True)
             print("Copying %s into trace..."%f)
-            dest = '%s/files.system-debuginfo/libthread_db.so'%args.trace_dir
+            dest = '%s/files.system-debuginfo/libthread_db.so'%trace_dir()
             if os.path.exists(dest):
                 os.remove(dest)
             shutil.copyfile(f, dest)
@@ -237,10 +247,10 @@ def build_cmd():
         rr_collect_symbols()
     package_libthread_db()
     set_default_user_sources()
-    cmd = ['chmod', '--quiet', '--recursive', 'ugo+rwX', args.trace_dir]
+    cmd = ['chmod', '--quiet', '--recursive', 'ugo+rwX', trace_dir()]
     maybe_echo(cmd)
     subprocess.call(cmd)
-    mounts = [(args.trace_dir, "/trace")]
+    mounts = [(trace_dir(), "/trace")]
     container_args = ["--empty-umask", "on-prem", "/trace"]
     env = {}
     if args.builder_rr_log:
@@ -252,7 +262,7 @@ def build_cmd():
 def serve_cmd():
     check_docker_intalled()
     pull_if_needed(SERVER_IMAGE)
-    mounts = [(args.trace_dir, "/pernosco/database,readonly")]
+    mounts = [(trace_dir(), "/pernosco/database,readonly")]
     container_args = ["--empty-umask", "--standalone", "--serve-sources", "/sources"]
     if args.storage:
         cmd = ['chmod', '--quiet', '--recursive', 'ugo+rwX', args.storage]
