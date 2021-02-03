@@ -66,7 +66,7 @@ This confinement largely ensures our containers can't modify or leak data even i
 
 ### Opting out of seccomp and AppArmor
 
-We disable seccomp syscall filtering and AppArmor in our containers using Docker's `seccomp=unconfined` and `apparmor=unconfined`. The former is necessary because Pernosco uses somewhat exotic syscalls such as `ptrace`, `mount`, `unshare` and `userfaultfd`. The latter is necessary because AppArmor can interfere with operations such as mounting tmpfs in our nested sandboxes.
+We disable seccomp syscall filtering and AppArmor in our containers using Docker's `seccomp=unconfined` and `apparmor=unconfined`. The former is necessary because Pernosco uses somewhat exotic syscalls such as `ptrace`, `mount`, `unshare` and `userfaultfd`. The latter is necessary because AppArmor can interfere with operations such as mounting tmpfs in our nested sandboxes. Our containers are still effectively confined by Docker's namespace sandboxing.
 
 ## Open-source licensing commitments
 
