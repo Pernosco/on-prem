@@ -131,8 +131,8 @@ def ensure_isolated_network_created():
 # incoming connections.
 def start_container(image, name, params, network=False, restart=False, env=[], mounts=[], entrypoint=None):
     cmd = ['docker', 'run', '--detach', '--name', "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:]),
-           '--security-opt', 'seccomp=unconfined', '--tmpfs', '/tmp',
-           '--env', 'RUST_BACKTRACE=full']
+           '--security-opt', 'seccomp=unconfined', '--security-opt', 'apparmor=unconfined',
+           '--tmpfs', '/tmp', '--env', 'RUST_BACKTRACE=full']
     if args.user:
         cmd.extend(['--user', args.user])
     if log_level:

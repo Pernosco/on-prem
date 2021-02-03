@@ -64,6 +64,10 @@ This confinement largely ensures our containers can't modify or leak data even i
 * `docker` runs an embedded DNS server accessible to every container which [cannot be disabled](https://github.com/moby/moby/issues/19474). Thus in principle a malicious container could leak information to the outside world via DNS requests. This potential threat could be blocked by blocking DNS on the host.
 * Our Web client uses [CSP](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) to confine itself, preventing it from communicating with any Web servers other than the on-premises Pernosco server itself. However, since our Web client is sending the CSP header, a malicious client could stop doing that. This potential threat could be blocked by putting the Web client behind a proxy that forcibly adds the required CSP header.
 
+### Opting out of seccomp and AppArmor
+
+We disable seccomp syscall filtering and AppArmor in our containers using Docker's `seccomp=unconfined` and `apparmor=unconfined`. The former is necessary because Pernosco uses somewhat exotic syscalls such as `ptrace`, `mount`, `unshare` and `userfaultfd`. The latter is necessary because AppArmor can interfere with operations such as mounting tmpfs in our nested sandboxes.
+
 ## Open-source licensing commitments
 
 The Pernosco on-prem packages derive from some GPLv3 code:
