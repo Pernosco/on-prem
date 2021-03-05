@@ -33,7 +33,7 @@ TIMEOUT = 60
 arg_parser = argparse.ArgumentParser(description='Run on-prem smoketests.')
 arg_parser.add_argument('--headless', action='store_true',
                         help='Run browser in headless mode.')
-arg_parser.add_argument('tests', nargs='?', default=argparse.SUPPRESS,
+arg_parser.add_argument('tmpdir', nargs='?', default=argparse.SUPPRESS,
                         help='The directory to run tests in (defaults to mkdtemp())')
 args = arg_parser.parse_args()
 
