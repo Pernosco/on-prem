@@ -33,6 +33,7 @@ TIMEOUT = 60
 arg_parser = argparse.ArgumentParser(description='Run on-prem smoketests.')
 arg_parser.add_argument('--headless', action='store_true',
                         help='Run browser in headless mode.')
+arg_parser.add_argument("--no-pull", action='store_true', help="Don't try to pull under any circumstances")
 arg_parser.add_argument('tmpdir', nargs='?', default=argparse.SUPPRESS,
                         help='The directory to run tests in (defaults to mkdtemp())')
 args = arg_parser.parse_args()
@@ -115,14 +116,19 @@ class script_succeeds(object):
 url = None
 server = None
 
+pernosco_cmd = ['./pernosco']
+if args.no_pull:
+    pernosco_cmd.append('--no-pull')
+
 def start_server():
     global url
     global server
-    server = subprocess.Popen(['./pernosco', '--user', '1200', 'serve', '--storage', storage_dir,
+    server = subprocess.Popen(pernosco_cmd + ['--user', '1200', 'serve', '--storage', storage_dir,
                                '--sources', testdir, '--sources', '/usr', trace_dir],
                                stdout=subprocess.PIPE, encoding='utf-8')
     url = None
     for line in server.stdout:
+        print(line)
         last_word = line.split()[-1]
         if last_word.startswith("http:"):
             url = last_word
@@ -135,15 +141,19 @@ subprocess.check_call(['git', 'checkout', '-q', test_git_revision], cwd=testdir)
 build()
 record()
 
-subprocess.check_call(['./pernosco', 'pull'])
+if not args.no_pull:
+    subprocess.check_call(['./pernosco', 'pull'])
 
-subprocess.check_call(['./pernosco', '--user', '1200', 'build', trace_dir])
+subprocess.check_call(pernosco_cmd + ['--user', '1200', 'build', trace_dir])
 
 os.mkdir(storage_dir)
 
+print("Starting server")
 start_server()
+print("Opening browser at ", url, " to run tests")
 create_driver()
 open_browser(url)
+print("Browser open, running tests")
 WebDriverWait(driver, TIMEOUT).until(
     EC.text_to_be_present_in_element((By.CSS_SELECTOR, ".view.source > .viewTitle"), "_exit.c")
 )
