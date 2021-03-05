@@ -29,7 +29,10 @@ class CustomException(Exception):
 
 TIMEOUT = 60
 
-tmpdir = tempfile.mkdtemp()
+if len(sys.argv) > 0:
+    tmpdir = sys.argv[1]
+else:
+    tmpdir = tempfile.mkdtemp()
 print("Working directory: %s"%tmpdir)
 trace_dir = None
 next_trace_id = 0
