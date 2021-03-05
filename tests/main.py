@@ -29,7 +29,7 @@ class CustomException(Exception):
 
 TIMEOUT = 60
 
-if len(sys.argv) > 0:
+if len(sys.argv) > 1:
     tmpdir = sys.argv[1]
 else:
     tmpdir = tempfile.mkdtemp()
