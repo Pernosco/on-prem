@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import argparse
 import glob
 import os
 import shutil
@@ -29,10 +30,18 @@ class CustomException(Exception):
 
 TIMEOUT = 60
 
-if len(sys.argv) > 1:
-    tmpdir = sys.argv[1]
+arg_parser = argparse.ArgumentParser(description='Run on-prem smoketests.')
+arg_parser.add_argument('--headless', action='store_true',
+                        help='Run browser in headless mode.')
+arg_parser.add_argument('tests', nargs='?', default=argparse.SUPPRESS,
+                        help='The directory to run tests in (defaults to mkdtemp())')
+args = arg_parser.parse_args()
+
+if 'tmpdir' in args:
+    tmpdir = args.tmpdir
 else:
     tmpdir = tempfile.mkdtemp()
+
 print("Working directory: %s"%tmpdir, file=sys.stderr)
 trace_dir = None
 next_trace_id = 0
@@ -55,6 +64,12 @@ storage_dir = "%s/storage"%tmpdir
 def create_driver():
     global driver
     options = webdriver.firefox.webdriver.Options()
+    if args.headless:
+        if int(selenium.__version__[0]) >= 4:
+            options.add_argument("-headless")
+        else:
+            options.set_headless()
+
     options.set_preference("network.websocket.delay-failed-reconnects", False)
     options.set_preference("devtools.console.stdout.content", True)
     options.log.level = "trace"
