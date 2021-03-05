@@ -33,7 +33,7 @@ if len(sys.argv) > 1:
     tmpdir = sys.argv[1]
 else:
     tmpdir = tempfile.mkdtemp()
-print("Working directory: %s"%tmpdir)
+print("Working directory: %s"%tmpdir, file=sys.stderr)
 trace_dir = None
 next_trace_id = 0
 
@@ -189,7 +189,7 @@ server.wait()
 output = subprocess.check_output(['docker', 'ps', '-aq'], encoding='utf-8').strip()
 assert len(output) == 0
 
-print("\nPASS")
+print("\nPASS", file=sys.stderr)
 
 # It would be nice to delete 'tmpdir' but we can't actually do that because it contains
 # files and directories owned by another user (the 'pernosco' container user) :-(
