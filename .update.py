@@ -47,8 +47,6 @@ changelog = []
 accumulating = False
 
 for line in log_output.splitlines():
-    print("Considering ", line, file=sys.stderr)
-    line = line.lstrip()
     if not line:
         accumulating = False
     elif accumulating:
