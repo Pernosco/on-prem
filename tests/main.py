@@ -116,7 +116,7 @@ class script_succeeds(object):
 url = None
 server = None
 
-pernosco_cmd = ['./pernosco', '-x']
+pernosco_cmd = ['./pernosco', '-x', '--log', 'info:/proc/self/fd/2']
 if args.no_pull:
     pernosco_cmd.append('--no-pull')
 
