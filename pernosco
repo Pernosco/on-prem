@@ -73,7 +73,13 @@ def check_access_credential(name):
         print("%s must be set in environment. If you want to try out Pernosco on-premises and have not yet contacted us for credentials, contact inquiries@pernos.co."%name, file=sys.stderr)
         sys.exit(1)
 
-def docker_login():
+did_docker_login = False
+
+def maybe_docker_login():
+    global did_docker_login
+    if did_docker_login:
+        return
+
     if not shutil.which('aws'):
         print("Please install the AWS command-line tools using", file=sys.stderr)
         print("  sudo pip3 install awscli --upgrade", file=sys.stderr)
@@ -90,18 +96,19 @@ def docker_login():
     p1.stdout.close()
     p2.communicate()
     assert p2.returncode == 0
+    did_docker_login = True
 
 def do_pull(image):
     if args.no_pull:
         print("Need to pull %s but --no-pull specified, aborting"%image, file=sys.stderr)
         sys.exit(1)
+    maybe_docker_login()
     cmd = ['docker', 'image', 'pull', image]
     maybe_echo(cmd)
     subprocess.check_call(cmd)
 
 def pull_cmd():
     check_docker_intalled()
-    docker_login()
     do_pull(BUILDER_IMAGE)
     do_pull(SERVER_IMAGE)
 
