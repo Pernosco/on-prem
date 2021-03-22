@@ -42,6 +42,9 @@ if 'tmpdir' in args:
     tmpdir = args.tmpdir
 else:
     tmpdir = tempfile.mkdtemp()
+testdir = "%s/pernosco-submit-test"%tmpdir
+tmpdir_alias = "%s/alias"%tmpdir
+testdir_alias = "%s/pernosco-submit-test"%tmpdir_alias
 
 print("Working directory: %s"%tmpdir, file=sys.stderr)
 trace_dir = None
@@ -124,8 +127,8 @@ def start_server():
     global url
     global server
     server = subprocess.Popen(pernosco_cmd + ['--user', '1200', 'serve', '--storage', storage_dir,
-                               '--sources', testdir, '--sources', '/usr', trace_dir],
-                               stdout=subprocess.PIPE, encoding='utf-8')
+                              '--sources', "%s=%s"%(tmpdir, tmpdir_alias), '--sources', '/usr', trace_dir],
+                              stdout=subprocess.PIPE, encoding='utf-8')
     url = None
     for line in server.stdout:
         print(line)
@@ -136,8 +139,9 @@ def start_server():
 
 test_git_revision = '84861f84a7462c2b4e04b7b41f7f83616c83c8dc'
 subprocess.check_call(['git', 'clone', 'https://github.com/Pernosco/pernosco-submit-test'], cwd=tmpdir)
-testdir = "%s/pernosco-submit-test"%tmpdir
 subprocess.check_call(['git', 'checkout', '-q', test_git_revision], cwd=testdir)
+subprocess.check_call(['mkdir', '-p', testdir_alias])
+subprocess.check_call(['sudo', 'mount', '--bind', testdir, testdir_alias])
 build()
 record()
 
@@ -165,8 +169,31 @@ WebDriverWait(driver, TIMEOUT).until(
 )
 driver.switch_to.window(main_window)
 
-# Test that notebook text persists
 search_input = driver.find_element_by_css_selector("#searchInput")
+
+# Test that our source file is readable
+focus_search()
+search_input.send_keys("helper_function")
+WebDriverWait(driver, TIMEOUT).until(
+    EC.text_to_be_present_in_element((By.CSS_SELECTOR, "#searchDropdown > *:nth-child(1)"), "helper_function")
+)
+search_input.send_keys(Keys.RETURN)
+
+WebDriverWait(driver, TIMEOUT).until(
+    EC.text_to_be_present_in_element((By.CSS_SELECTOR, "#main > .execution > .contents > div"), "helper_function")
+)
+item = driver.find_element_by_css_selector("#main > .execution > .contents > div");
+item.click();
+WebDriverWait(driver, TIMEOUT).until(
+    EC.text_to_be_present_in_element((By.CSS_SELECTOR, ".view.source > .viewTitle"), "file.c")
+)
+driver.switch_to.frame(source_frame)
+WebDriverWait(driver, TIMEOUT).until(
+    EC.text_to_be_present_in_element((By.CSS_SELECTOR, "#monaco-container"), "helper_function")
+)
+driver.switch_to.window(main_window)
+
+# Test that notebook text persists
 focus_search()
 search_input.send_keys("notebook")
 WebDriverWait(driver, TIMEOUT).until(
@@ -174,9 +201,6 @@ WebDriverWait(driver, TIMEOUT).until(
 )
 search_input.send_keys(Keys.RETURN)
 
-WebDriverWait(driver, TIMEOUT).until(
-    EC.text_to_be_present_in_element((By.CSS_SELECTOR, "#main > .notebook > .contents > div > div:first-child"), "exit")
-)
 first_note = driver.find_element_by_css_selector("#main > .notebook > .contents > div > div.tentative");
 WebDriverWait(driver, TIMEOUT).until(
     script_succeeds("return document.querySelector('#main > .notebook > .contents > div').classList.contains('focus');", True)
@@ -213,6 +237,8 @@ server.wait()
 # Check that docker containers have been cleaned up
 output = subprocess.check_output(['docker', 'ps', '-aq'], encoding='utf-8').strip()
 assert len(output) == 0
+
+subprocess.check_call(['sudo', 'umount', testdir_alias])
 
 print("\nPASS", file=sys.stderr)
 

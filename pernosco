@@ -8,6 +8,10 @@ import shutil
 import subprocess
 import sys
 
+import pernoscoshared.base as base
+import pernoscoshared.packaging as packaging
+import pernoscoshared.sources as sources
+
 # Prerequisites (must be on PATH):
 #   AWS CLI
 #   docker
@@ -34,6 +38,8 @@ serve_subparser.add_argument("--sources", action="append", help="Add this direct
 
 args = arg_parser.parse_args()
 
+base.echo_commands = args.echo_commands
+
 # Global command-line options
 log_level = None
 log_file = None
@@ -59,11 +65,7 @@ BUILDER_IMAGE = "%s:%s"%(BUILDER_REPOSITORY, metadata['db_builder_revision'])
 SERVER_IMAGE = "%s:%s"%(SERVER_REPOSITORY, metadata['appserver_revision'])
 PERNOSCO_ISOLATED_NETWORK = "pernosco-isolated-network"
 
-def maybe_echo(cmd):
-    if args.echo_commands:
-        print(" ".join(cmd), file=sys.stderr)
-
-def check_docker_intalled():
+def check_docker_installed():
     if not shutil.which('docker'):
         print("Please install docker", file=sys.stderr)
         sys.exit(1)
@@ -90,7 +92,7 @@ def maybe_docker_login():
 
     cmd1 = ['aws', 'ecr', 'get-login-password', '--region', REPOSITORY_REGION]
     cmd2 = ['docker', 'login', '--username', 'AWS', '--password-stdin', REPOSITORY_HOST]
-    maybe_echo(cmd1 + ["|"] + cmd2)
+    base.maybe_echo(cmd1 + ["|"] + cmd2)
     p1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
     p2 = subprocess.Popen(cmd2, stdin=p1.stdout)
     p1.stdout.close()
@@ -103,32 +105,24 @@ def do_pull(image):
         print("Need to pull %s but --no-pull specified, aborting"%image, file=sys.stderr)
         sys.exit(1)
     maybe_docker_login()
-    cmd = ['docker', 'image', 'pull', image]
-    maybe_echo(cmd)
-    subprocess.check_call(cmd)
+    base.check_call(['docker', 'image', 'pull', image])
 
 def pull_cmd():
-    check_docker_intalled()
+    check_docker_installed()
     do_pull(BUILDER_IMAGE)
     do_pull(SERVER_IMAGE)
 
 def pull_if_needed(image):
-    cmd = ['docker', 'image', 'inspect', image]
-    maybe_echo(cmd)
-    ret = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ret = base.call(['docker', 'image', 'inspect', image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if ret == 0:
         return
     do_pull(image)
 
 def ensure_isolated_network_created():
-    cmd = ['docker', 'network', 'inspect', PERNOSCO_ISOLATED_NETWORK]
-    maybe_echo(cmd)
-    ret = subprocess.call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ret = base.call(['docker', 'network', 'inspect', PERNOSCO_ISOLATED_NETWORK], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if ret == 0:
         return
-    cmd = ['docker', 'network', 'create', PERNOSCO_ISOLATED_NETWORK, "--internal"]
-    maybe_echo(cmd)
-    subprocess.check_call(cmd)
+    base.check_call(['docker', 'network', 'create', PERNOSCO_ISOLATED_NETWORK, "--internal"])
 
 # Starts a container. We confine the container as much as possible.
 # The container is unable to connect to the outside world via its network,
@@ -162,31 +156,24 @@ def start_container(image, name, params, network=False, restart=False, env=[], r
         cmd.extend(['--restart', 'on-failure'])
     cmd.append(image)
     cmd.extend(params)
-    maybe_echo(cmd)
     # Avoid using 'encoding' parameter to check_output because it was only
     # added in Python 3.6.
-    return subprocess.check_output(cmd).decode().strip()
+    return base.check_output(cmd).decode().strip()
 
 def wait_for_container(container_id):
-    cmd = ['docker', 'wait', container_id]
-    maybe_echo(cmd)
     try:
         # Avoid using 'encoding' parameter to check_output because it was only
         # added in Python 3.6.
-        ret = int(subprocess.check_output(cmd).decode().rstrip())
+        ret = int(base.check_output(['docker', 'wait', container_id]).decode().rstrip())
     except KeyboardInterrupt:
         ret = -2
         pass
 
     if log_file:
-        cmd = ['docker', 'logs', container_id]
-        maybe_echo(cmd)
         with open(log_file, "w") as f:
-            subprocess.check_call(cmd, stdout=f, stderr=subprocess.STDOUT)
+            base.check_call(['docker', 'logs', container_id], stdout=f, stderr=subprocess.STDOUT)
 
-    cmd = ['docker', 'rm', '--force', '--volumes', container_id]
-    maybe_echo(cmd)
-    subprocess.check_call(cmd, stdout=subprocess.DEVNULL)
+    base.check_call(['docker', 'rm', '--force', '--volumes', container_id], stdout=subprocess.DEVNULL)
     if ret:
         print("Container %s exited with exit code %d"%(container_id, ret), file=sys.stderr)
         if ret > 0:
@@ -194,9 +181,7 @@ def wait_for_container(container_id):
         sys.exit(1)
 
 def container_ip_address(container_id):
-    cmd = ['docker', 'inspect', container_id]
-    maybe_echo(cmd)
-    output = json.loads(subprocess.check_output(cmd))
+    output = json.loads(base.check_output(['docker', 'inspect', container_id]))
     return output[0]['NetworkSettings']['Networks'][PERNOSCO_ISOLATED_NETWORK]['IPAddress']
 
 def trace_dir():
@@ -217,34 +202,13 @@ def set_default_user_sources():
     with open(path, "w") as f:
         json.dump(default, f)
 
-def rr_pack():
-    print("Running 'rr pack'...")
-    cmd = ['rr', 'pack', trace_dir()]
-    maybe_echo(cmd)
-    subprocess.check_call(cmd)
-
 def rr_collect_symbols():
     print("Running 'rr-collect-symbols.py'...")
-    cmd = ['rr-collect-symbols.py', trace_dir()]
-    maybe_echo(cmd)
-    subprocess.check_call(cmd)
-
-def package_libthread_db():
-    for f in ['/usr/lib64/libthread_db.so',
-              '/usr/lib/x86_64-linux-gnu/libthread_db.so']:
-        if os.path.isfile(f):
-            os.makedirs('%s/files.system-debuginfo'%trace_dir(), exist_ok=True)
-            print("Copying %s into trace..."%f)
-            dest = '%s/files.system-debuginfo/libthread_db.so'%trace_dir()
-            if os.path.exists(dest):
-                os.remove(dest)
-            shutil.copyfile(f, dest)
-            # Make sure it's world-readable/executable so db-builder can load it
-            os.chmod(dest, 0o555)
-            break
+    base.check_call(['rr-collect-symbols.py', trace_dir()])
 
 def build_cmd():
-    check_docker_intalled()
+    base.trace_dir = args.trace_dir
+    check_docker_installed()
     pull_if_needed(BUILDER_IMAGE)
     if not args.skip_rr:
         if not shutil.which('rr'):
@@ -253,13 +217,12 @@ def build_cmd():
         if not shutil.which('rr-collect-symbols.py'):
             print("Please install `rr` master and make sure rr-collect-symbols.py is on your $PATH.", file=sys.stderr)
             sys.exit(1)
-        rr_pack()
+        packaging.rr_pack()
         rr_collect_symbols()
-    package_libthread_db()
+    sources.package_debuginfo_files()
+    packaging.package_libthread_db()
     set_default_user_sources()
-    cmd = ['chmod', '--quiet', '--recursive', 'ugo+rwX', trace_dir()]
-    maybe_echo(cmd)
-    subprocess.call(cmd)
+    base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', trace_dir()])
     read_write_mounts = [(trace_dir(), "/trace")]
     container_args = ["--empty-umask", "on-prem", "/trace"]
     env = {}
@@ -270,14 +233,13 @@ def build_cmd():
     wait_for_container(container_id)
 
 def serve_cmd():
-    check_docker_intalled()
+    base.trace_dir = args.trace_dir
+    check_docker_installed()
     pull_if_needed(SERVER_IMAGE)
     read_write_mounts = []
     container_args = ["--empty-umask", "--standalone", "--serve-sources", "/sources"]
     if args.storage:
-        cmd = ['chmod', '--quiet', '--recursive', 'ugo+rwX', args.storage]
-        maybe_echo(cmd)
-        subprocess.call(cmd)
+        base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', args.storage])
         read_write_mounts.append((args.storage, "/pernosco/storage"))
         container_args.extend(["--app-storage", "/pernosco/storage"])
     read_only_mounts = [(trace_dir(), "/pernosco/database")]
