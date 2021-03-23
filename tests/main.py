@@ -148,7 +148,7 @@ record()
 if not args.no_pull:
     subprocess.check_call(['./pernosco', 'pull'])
 
-subprocess.check_call(pernosco_cmd + ['--user', '1200', 'build', trace_dir])
+subprocess.check_call(pernosco_cmd + ['--user', '1200', 'build'], env=clean_env)
 
 os.mkdir(storage_dir)
 
@@ -236,7 +236,9 @@ server.wait()
 
 # Check that docker containers have been cleaned up
 output = subprocess.check_output(['docker', 'ps', '-aq'], encoding='utf-8').strip()
-assert len(output) == 0
+if len(output) > 0:
+    print("Docker containers still running:\n%s"%output, file=sys.stderr)
+    assert False
 
 subprocess.check_call(['sudo', 'umount', testdir_alias])
 

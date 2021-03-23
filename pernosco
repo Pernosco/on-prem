@@ -195,7 +195,7 @@ def trace_dir():
     sys.exit(1)
 
 def set_default_user_sources():
-    path = "%s/sources.user"%trace_dir()
+    path = "%s/sources.user"%base.trace_dir
     if os.path.exists(path):
         return
     default = [{'files': [{'url': '/sources/', 'at': '/'}]}]
@@ -204,10 +204,10 @@ def set_default_user_sources():
 
 def rr_collect_symbols():
     print("Running 'rr-collect-symbols.py'...")
-    base.check_call(['rr-collect-symbols.py', trace_dir()])
+    base.check_call(['rr-collect-symbols.py', base.trace_dir])
 
 def build_cmd():
-    base.trace_dir = args.trace_dir
+    base.trace_dir = trace_dir()
     check_docker_installed()
     pull_if_needed(BUILDER_IMAGE)
     if not args.skip_rr:
@@ -222,8 +222,8 @@ def build_cmd():
     sources.package_debuginfo_files()
     packaging.package_libthread_db()
     set_default_user_sources()
-    base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', trace_dir()])
-    read_write_mounts = [(trace_dir(), "/trace")]
+    base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', base.trace_dir])
+    read_write_mounts = [(base.trace_dir, "/trace")]
     container_args = ["--empty-umask", "on-prem", "/trace"]
     env = {}
     if args.builder_rr_log:
@@ -233,7 +233,7 @@ def build_cmd():
     wait_for_container(container_id)
 
 def serve_cmd():
-    base.trace_dir = args.trace_dir
+    base.trace_dir = trace_dir()
     check_docker_installed()
     pull_if_needed(SERVER_IMAGE)
     read_write_mounts = []
@@ -242,7 +242,7 @@ def serve_cmd():
         base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', args.storage])
         read_write_mounts.append((args.storage, "/pernosco/storage"))
         container_args.extend(["--app-storage", "/pernosco/storage"])
-    read_only_mounts = [(trace_dir(), "/pernosco/database")]
+    read_only_mounts = [(base.trace_dir, "/pernosco/database")]
     if args.sources:
         for s in args.sources:
             dirs = s.split('=', 1)
