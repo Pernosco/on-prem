@@ -53,6 +53,8 @@ if args.log:
         sys.exit(1)
     log_level = parts[0]
     log_file = parts[1]
+else:
+    log_level = "error"
 
 random.seed()
 
@@ -174,6 +176,8 @@ def wait_for_container(container_id):
     if log_file:
         with open(log_file, "w") as f:
             base.check_call(['docker', 'logs', container_id], stdout=f, stderr=subprocess.STDOUT)
+    else:
+        base.check_call(['docker', 'logs', container_id], stderr=subprocess.STDOUT)
 
     base.check_call(['docker', 'rm', '--force', '--volumes', container_id], stdout=subprocess.DEVNULL)
     if ret:
