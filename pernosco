@@ -29,8 +29,8 @@ pull_subparser = arg_subparsers.add_parser("pull", help="Pull needed container i
 build_subparser = arg_subparsers.add_parser("build", help="Build database for rr trace")
 build_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
 build_subparser.add_argument("--shards", help="The number of shards to use when building the database")
-build_subparser.add_argument("--skip-rr", help="Skip steps that require host rr ('rr pack', 'rr-collect-symbols.py')")
-build_subparser.add_argument("--check-trace", help="Run some checks on the trace to debug Pernosco")
+build_subparser.add_argument("--skip-rr", action='store_true', help="Skip steps that require host rr ('rr pack', 'rr-collect-symbols.py')")
+build_subparser.add_argument("--check-trace", action='store_true', help="Run some checks on the trace to debug Pernosco")
 build_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to builder's rr")
 
 serve_subparser = arg_subparsers.add_parser("serve", help="Serve Pernosco UI for an rr trace and Pernosco database")
@@ -232,11 +232,12 @@ def build_cmd():
     if args.check_trace:
         container_args.extend(["--check-trace"])
     container_args.extend(["on-prem", "/trace"])
+    container_args = ["-c", "sleep 1; db_builder %s"%" ".join(container_args)]
     env = {}
     if args.builder_rr_log:
         env['RR_LOG'] = args.builder_rr_log
     container_id = start_container(BUILDER_IMAGE, "db_builder", container_args,
-        env=env, entrypoint="db_builder", read_write_mounts=read_write_mounts)
+        env=env, entrypoint="/bin/bash", read_write_mounts=read_write_mounts)
     wait_for_container(container_id)
 
 def serve_cmd():

@@ -148,7 +148,7 @@ record()
 if not args.no_pull:
     subprocess.check_call(['./pernosco', 'pull'])
 
-subprocess.check_call(pernosco_cmd + ['--user', '1200', 'build'], env=clean_env)
+subprocess.check_call(pernosco_cmd + ['--user', '1200', 'build', '--check-trace'], env=clean_env)
 
 os.mkdir(storage_dir)
 
