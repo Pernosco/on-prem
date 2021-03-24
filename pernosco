@@ -74,11 +74,6 @@ def check_docker_installed():
         print("Please install docker", file=sys.stderr)
         sys.exit(1)
 
-def check_access_credential(name):
-    if not name in os.environ:
-        print("%s must be set in environment. If you want to try out Pernosco on-premises and have not yet contacted us for credentials, contact inquiries@pernos.co."%name, file=sys.stderr)
-        sys.exit(1)
-
 did_docker_login = False
 
 def maybe_docker_login():
@@ -91,8 +86,10 @@ def maybe_docker_login():
         print("  sudo pip3 install awscli --upgrade", file=sys.stderr)
         print("(Distribution packages may fail due to https://github.com/aws/aws-cli/issues/2403.)", file=sys.stderr)
         sys.exit(1)
-    check_access_credential('AWS_ACCESS_KEY_ID')
-    check_access_credential('AWS_SECRET_ACCESS_KEY')
+
+    if subprocess.call(['aws', 'sts', 'get-caller-identity'], stdout=subprocess.DEVNULL) != 0:
+        print("Pernosco AWS credentials must be available. If you want to try out Pernosco on-premises and have not yet contacted us for credentials, contact inquiries@pernos.co."%name, file=sys.stderr)
+        sys.exit(1)
 
     cmd1 = ['aws', 'ecr', 'get-login-password', '--region', REPOSITORY_REGION]
     cmd2 = ['docker', 'login', '--username', 'AWS', '--password-stdin', REPOSITORY_HOST]
