@@ -30,6 +30,7 @@ build_subparser = arg_subparsers.add_parser("build", help="Build database for rr
 build_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
 build_subparser.add_argument("--shards", help="The number of shards to use when building the database")
 build_subparser.add_argument("--skip-rr", help="Skip steps that require host rr ('rr pack', 'rr-collect-symbols.py')")
+build_subparser.add_argument("--check-trace", help="Run some checks on the trace to debug Pernosco")
 build_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to builder's rr")
 
 serve_subparser = arg_subparsers.add_parser("serve", help="Serve Pernosco UI for an rr trace and Pernosco database")
@@ -228,6 +229,8 @@ def build_cmd():
     container_args = ["--empty-umask"]
     if args.shards:
         container_args.extend(["--shards", args.shards])
+    if args.check_trace:
+        container_args.extend(["--check-trace"])
     container_args.extend(["on-prem", "/trace"])
     env = {}
     if args.builder_rr_log:
