@@ -88,7 +88,7 @@ def maybe_docker_login():
         sys.exit(1)
 
     if subprocess.call(['aws', 'sts', 'get-caller-identity'], stdout=subprocess.DEVNULL) != 0:
-        print("Pernosco AWS credentials must be available. If you want to try out Pernosco on-premises and have not yet contacted us for credentials, contact inquiries@pernos.co."%name, file=sys.stderr)
+        print("Pernosco AWS credentials must be available. If you want to try out Pernosco on-premises and have not yet contacted us for credentials, contact inquiries@pernos.co.", file=sys.stderr)
         sys.exit(1)
 
     cmd1 = ['aws', 'ecr', 'get-login-password', '--region', REPOSITORY_REGION]
