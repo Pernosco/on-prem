@@ -28,6 +28,7 @@ pull_subparser = arg_subparsers.add_parser("pull", help="Pull needed container i
 
 build_subparser = arg_subparsers.add_parser("build", help="Build database for rr trace")
 build_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
+build_subparser.add_argument("--shards", help="The number of shards to use when building the database")
 build_subparser.add_argument("--skip-rr", help="Skip steps that require host rr ('rr pack', 'rr-collect-symbols.py')")
 build_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to builder's rr")
 
@@ -224,7 +225,10 @@ def build_cmd():
     set_default_user_sources()
     base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', base.trace_dir])
     read_write_mounts = [(base.trace_dir, "/trace")]
-    container_args = ["--empty-umask", "on-prem", "/trace"]
+    container_args = ["--empty-umask"]
+    if args.shards:
+        container_args.extend(["--shards", args.shards])
+    container_args.extend(["on-prem", "/trace"])
     env = {}
     if args.builder_rr_log:
         env['RR_LOG'] = args.builder_rr_log
