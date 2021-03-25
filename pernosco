@@ -132,7 +132,7 @@ def ensure_isolated_network_created():
 # When 'network' is True, we create a network so the container can accept
 # incoming connections.
 # read_write_mounts and read_only_mounts are a list of pathname pairs (host_path, container_path)
-def start_container(image, name, params, network=False, restart=False, env=[], read_write_mounts=[], read_only_mounts=[], entrypoint=None):
+def start_container(image, name, params, network=False, restart=False, env={}, read_write_mounts=[], read_only_mounts=[], entrypoint=None):
     cmd = ['docker', 'run', '--detach', '--name', "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:]),
            '--security-opt', 'seccomp=unconfined', '--security-opt', 'apparmor=unconfined',
            '--tmpfs', '/tmp', '--env', 'RUST_BACKTRACE=full', '--init']
@@ -263,8 +263,8 @@ def serve_cmd():
                 read_only_mounts.append((dirs[0], "/sources%s"%dirs[0]))
             else:
                 read_only_mounts.append((dirs[1], "/sources%s"%dirs[0]))
-    env = ['APP_SERVER_IDLE_TIMEOUT=999999999',
-           'PERNOSCO_ENABLE_VARIABLES_ANNOTATIONS=0']
+    env = {'APP_SERVER_IDLE_TIMEOUT': '999999999',
+           'PERNOSCO_ENABLE_VARIABLES_ANNOTATIONS': '0'}
     container_id = start_container(SERVER_IMAGE, "app_server", container_args,
         env=env, network=True, restart=True, read_only_mounts=read_only_mounts, read_write_mounts=read_write_mounts)
     ip_address = container_ip_address(container_id)
