@@ -44,6 +44,10 @@ All directories and files created by Pernosco are world-readable/world-writeable
 
 At minimum the machine running the builder and appserver needs CPU support for AVX (on Intel, Sandy Bridge or later). It needs to support any instructions used in the rr recording.
 
+## Parallelism
+
+Pernosco can be computationally expensive when processing long execution traces. Pernosco has been designed to be highly parallel and is capable of using a very large number of CPU cores. Parallelism during the build phase is controlled by the `--shards` argument to `pernosco build`. The default number of shards is 5, which can saturate an 18 core CPU. If you are running on fewer cores, you may want to try reducing the number of shards, and if you are running on more cores, increasing the number of shards. The smallest number of shards that can saturate your CPU is likely to give the best performance.
+
 ## Troubleshooting
 
 Pass `pernosco --log info=<log-file>` to capture a log. Pay attention to lines starting with `ERROR` or `WARN`. Contact [support](mailto:support@pernos.co) for assistance if necessary.
@@ -67,6 +71,14 @@ This confinement largely ensures our containers can't modify or leak data even i
 ### Opting out of seccomp and AppArmor
 
 We disable seccomp syscall filtering and AppArmor in our containers using Docker's `seccomp=unconfined` and `apparmor=unconfined`. The former is necessary because Pernosco uses somewhat exotic syscalls such as `ptrace`, `mount`, `unshare` and `userfaultfd`. The latter is necessary because AppArmor can interfere with operations such as mounting tmpfs in our nested sandboxes. Our containers are still effectively confined by Docker's namespace sandboxing.
+
+## Distro-specific advice
+
+### Debian
+
+Debian comes with user namespace support disabled in the kernel. Pernosco uses user namespaces to sandbox third-party binaries that are used in debugging sessions such as `gdb` and `libthread_db.so` (a glibc component that provides support for accessing TLS variables). You can check the status of user namespace support with `sysctl kernel.unprivileged_userns_clone`: 0 = disabled, 1 = enabled. You will need to enable `kernel.unprivileged_userns_clone` to run Pernosco.
+
+Add `kernel.unprivileged_userns_clone=1` to `/etc/sysctl.conf` to enable it on each subsequent reboot or run `sysctl -w kernel.unprivileged_userns_clone=1` to enable it until the next reboot.
 
 ## Open-source licensing commitments
 
