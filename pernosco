@@ -174,7 +174,7 @@ def wait_for_container(container_id):
         with open(log_file, "w") as f:
             base.check_call(['docker', 'logs', container_id], stdout=f, stderr=subprocess.STDOUT)
     else:
-        base.check_call(['docker', 'logs', container_id], stderr=subprocess.STDOUT)
+        base.check_call(['docker', 'logs', container_id])
 
     base.check_call(['docker', 'rm', '--force', '--volumes', container_id], stdout=subprocess.DEVNULL)
     if ret:
