@@ -141,6 +141,7 @@ test_git_revision = '84861f84a7462c2b4e04b7b41f7f83616c83c8dc'
 subprocess.check_call(['git', 'clone', 'https://github.com/Pernosco/pernosco-submit-test'], cwd=tmpdir)
 subprocess.check_call(['git', 'checkout', '-q', test_git_revision], cwd=testdir)
 subprocess.check_call(['mkdir', '-p', testdir_alias])
+print("Mounting filesystem into test")
 subprocess.check_call(['sudo', 'mount', '--bind', testdir, testdir_alias])
 build()
 record()

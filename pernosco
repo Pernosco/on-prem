@@ -160,19 +160,36 @@ def start_container(image, name, params, network=False, env={}, read_write_mount
     return base.check_output(cmd).decode().strip()
 
 def wait_for_container(container_id):
+    cmd = ['docker', 'logs', '--follow', container_id]
+    base.maybe_echo(cmd)
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    ret = None
+    f = None
+    if log_file:
+        f = open(log_file, "wb")
     try:
+        for line in p.stdout:
+            if f:
+                if line.startswith(b"^ERROR:"):
+                    sys.stderr.buffer.write(line)
+                f.write(line)
+            else:
+                if line.startswith(b"^ERROR:"):
+                    sys.stderr.buffer.write(line)
+                else:
+                    sys.stdout.buffer.write(line)
+    except KeyboardInterrupt:
+        base.call(['docker', 'stop', container_id])
+        ret = -2
+        pass
+    finally:
+        if f:
+            f.close()
+
+    if ret == None:
         # Avoid using 'encoding' parameter to check_output because it was only
         # added in Python 3.6.
         ret = int(base.check_output(['docker', 'wait', container_id]).decode().rstrip())
-    except KeyboardInterrupt:
-        ret = -2
-        pass
-
-    if log_file:
-        with open(log_file, "w") as f:
-            base.check_call(['docker', 'logs', container_id], stdout=f, stderr=subprocess.STDOUT)
-    else:
-        base.check_call(['docker', 'logs', container_id])
 
     base.check_call(['docker', 'rm', '--force', '--volumes', container_id], stdout=subprocess.DEVNULL)
     if ret:
@@ -261,8 +278,7 @@ def serve_cmd():
                 read_only_mounts.append((dirs[0], "/sources%s"%dirs[0]))
             else:
                 read_only_mounts.append((dirs[1], "/sources%s"%dirs[0]))
-    env = {'APP_SERVER_IDLE_TIMEOUT': '999999999',
-           'PERNOSCO_ENABLE_VARIABLES_ANNOTATIONS': '0'}
+    env = {'PERNOSCO_ENABLE_VARIABLES_ANNOTATIONS': '0'}
     container_id = start_container(SERVER_IMAGE, "app_server", container_args,
         env=env, network=True, read_only_mounts=read_only_mounts, read_write_mounts=read_write_mounts)
     ip_address = container_ip_address(container_id)
