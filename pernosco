@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+from typing import Optional, List, Pattern, Callable, Tuple, Dict, TypedDict, Any, Mapping, cast, Union, NewType
+
 import argparse
 import json
 import os
@@ -11,6 +14,9 @@ import sys
 import pernoscoshared.base as base
 import pernoscoshared.packaging as packaging
 import pernoscoshared.sources as sources
+
+ContainerId = NewType("ContainerId", str)
+ImageName = NewType("ImageName", str)
 
 # Prerequisites (must be on PATH):
 #   AWS CLI
@@ -65,18 +71,18 @@ REPOSITORY_REGION = 'us-east-2'
 REPOSITORY_HOST = '643334553517.dkr.ecr.%s.amazonaws.com'%REPOSITORY_REGION
 BUILDER_REPOSITORY = '%s/customers/db-builder'%REPOSITORY_HOST
 SERVER_REPOSITORY = '%s/customers/app-server'%REPOSITORY_HOST
-BUILDER_IMAGE = "%s:%s"%(BUILDER_REPOSITORY, metadata['db_builder_revision'])
-SERVER_IMAGE = "%s:%s"%(SERVER_REPOSITORY, metadata['appserver_revision'])
+BUILDER_IMAGE = ImageName("%s:%s"%(BUILDER_REPOSITORY, metadata['db_builder_revision']))
+SERVER_IMAGE = ImageName("%s:%s"%(SERVER_REPOSITORY, metadata['appserver_revision']))
 PERNOSCO_ISOLATED_NETWORK = "pernosco-isolated-network"
 
-def check_docker_installed():
+def check_docker_installed() -> None:
     if not shutil.which('docker'):
         print("Please install docker", file=sys.stderr)
         sys.exit(1)
 
-did_docker_login = False
+did_docker_login: bool = False
 
-def maybe_docker_login():
+def maybe_docker_login() -> None:
     global did_docker_login
     if did_docker_login:
         return
@@ -95,31 +101,32 @@ def maybe_docker_login():
     cmd2 = ['docker', 'login', '--username', 'AWS', '--password-stdin', REPOSITORY_HOST]
     base.maybe_echo(cmd1 + ["|"] + cmd2)
     p1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
+    assert p1.stdout
     p2 = subprocess.Popen(cmd2, stdin=p1.stdout)
     p1.stdout.close()
     p2.communicate()
     assert p2.returncode == 0
     did_docker_login = True
 
-def do_pull(image):
+def do_pull(image: str) -> None:
     if args.no_pull:
         print("Need to pull %s but --no-pull specified, aborting"%image, file=sys.stderr)
         sys.exit(1)
     maybe_docker_login()
     base.check_call(['docker', 'image', 'pull', image])
 
-def pull_cmd():
+def pull_cmd() -> None:
     check_docker_installed()
     do_pull(BUILDER_IMAGE)
     do_pull(SERVER_IMAGE)
 
-def pull_if_needed(image):
+def pull_if_needed(image: ImageName) -> None:
     ret = base.call(['docker', 'image', 'inspect', image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if ret == 0:
         return
     do_pull(image)
 
-def ensure_isolated_network_created():
+def ensure_isolated_network_created() -> None:
     ret = base.call(['docker', 'network', 'inspect', PERNOSCO_ISOLATED_NETWORK], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if ret == 0:
         return
@@ -132,7 +139,9 @@ def ensure_isolated_network_created():
 # When 'network' is True, we create a network so the container can accept
 # incoming connections.
 # read_write_mounts and read_only_mounts are a list of pathname pairs (host_path, container_path)
-def start_container(image, name, params, network=False, env={}, read_write_mounts=[], read_only_mounts=[], entrypoint=None):
+def start_container(image: ImageName, name: str, params: List[str], network: bool = False, env: Dict[str, str] = {},
+        read_write_mounts: List[Tuple[str, str]] = [], read_only_mounts: List[Tuple[str, str]] = [],
+        entrypoint: Optional[str] = None) -> ContainerId:
     cmd = ['docker', 'run', '--detach', '--name', "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:]),
            '--security-opt', 'seccomp=unconfined', '--security-opt', 'apparmor=unconfined',
            '--tmpfs', '/tmp', '--env', 'RUST_BACKTRACE=full', '--init']
@@ -157,12 +166,11 @@ def start_container(image, name, params, network=False, env={}, read_write_mount
     cmd.extend(params)
     # Avoid using 'encoding' parameter to check_output because it was only
     # added in Python 3.6.
-    return base.check_output(cmd).decode().strip()
+    return ContainerId(base.check_output(cmd).decode().strip())
 
-def wait_for_container(container_id):
-    cmd = ['docker', 'logs', '--follow', container_id]
-    base.maybe_echo(cmd)
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+def wait_for_container(container_id: ContainerId) -> None:
+    p = base.Popen(['docker', 'logs', '--follow', container_id], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    assert p.stdout
     ret = None
     f = None
     if log_file:
@@ -198,12 +206,15 @@ def wait_for_container(container_id):
             sys.exit(ret)
         sys.exit(1)
 
-def container_ip_address(container_id):
+def container_ip_address(container_id: ContainerId) -> str:
     output = json.loads(base.check_output(['docker', 'inspect', container_id]))
-    return output[0]['NetworkSettings']['Networks'][PERNOSCO_ISOLATED_NETWORK]['IPAddress']
+    ret = output[0]['NetworkSettings']['Networks'][PERNOSCO_ISOLATED_NETWORK]['IPAddress']
+    assert isinstance(ret, str)
+    return ret
 
-def trace_dir():
+def trace_dir() -> str:
     if args.trace_dir:
+        assert isinstance(args.trace_dir, str)
         return args.trace_dir
     if "_RR_TRACE_DIR" in os.environ:
         return "%s/latest-trace"%os.environ['_RR_TRACE_DIR']
@@ -212,7 +223,8 @@ def trace_dir():
     print("Can't determine default trace dir", file=sys.stderr)
     sys.exit(1)
 
-def set_default_user_sources():
+def set_default_user_sources() -> None:
+    assert base.trace_dir
     path = "%s/sources.user"%base.trace_dir
     if os.path.exists(path):
         return
@@ -220,11 +232,12 @@ def set_default_user_sources():
     with open(path, "w") as f:
         json.dump(default, f)
 
-def rr_collect_symbols():
+def rr_collect_symbols() -> None:
+    assert base.trace_dir
     print("Running 'rr-collect-symbols.py'...")
     base.check_call(['rr-collect-symbols.py', base.trace_dir])
 
-def build_cmd():
+def build_cmd() -> None:
     base.trace_dir = trace_dir()
     check_docker_installed()
     pull_if_needed(BUILDER_IMAGE)
@@ -256,7 +269,7 @@ def build_cmd():
         env=env, entrypoint="/bin/bash", read_write_mounts=read_write_mounts)
     wait_for_container(container_id)
 
-def serve_cmd():
+def serve_cmd() -> None:
     base.trace_dir = trace_dir()
     check_docker_installed()
     pull_if_needed(SERVER_IMAGE)
