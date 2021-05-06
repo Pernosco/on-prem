@@ -44,6 +44,11 @@ serve_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace
 serve_subparser.add_argument("--storage", help="Use this directory to store persistent data (i.e. notebook data)")
 serve_subparser.add_argument("--sources", action="append", help="Add this directory to the list of directories accessible to the container for serving source files. This can also be of the form <from-dir>=<to-dir> to indicate that source files relative to <from-dir> should be resolved relative to <to-dir>. These directory names must be absolute.")
 
+rr_subparser = arg_subparsers.add_parser("rr", help="Run the builder rr for diagnostic purposes")
+rr_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
+rr_subparser.add_argument("rr_args", nargs=argparse.REMAINDER, help="rr parameters (use /trace to refer to the trace)")
+rr_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to builder's rr")
+
 args = arg_parser.parse_args()
 
 base.echo_commands = args.echo_commands
@@ -269,6 +274,19 @@ def build_cmd() -> None:
         env=env, entrypoint="/bin/bash", read_write_mounts=read_write_mounts)
     wait_for_container(container_id)
 
+def rr_cmd() -> None:
+    base.trace_dir = trace_dir()
+    check_docker_installed()
+    pull_if_needed(BUILDER_IMAGE)
+    base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', base.trace_dir])
+    read_write_mounts = [(base.trace_dir, "/trace")]
+    env = {}
+    if args.builder_rr_log:
+        env['RR_LOG'] = args.builder_rr_log
+    container_id = start_container(BUILDER_IMAGE, "db_builder", args.rr_args,
+        env=env, entrypoint="/usr/local/bin/rr", read_write_mounts=read_write_mounts)
+    wait_for_container(container_id)
+
 def serve_cmd() -> None:
     base.trace_dir = trace_dir()
     check_docker_installed()
@@ -302,6 +320,8 @@ if args.subcommand == 'pull':
     pull_cmd()
 elif args.subcommand == 'build':
     build_cmd()
+elif args.subcommand == 'rr':
+    rr_cmd()
 elif args.subcommand == 'serve':
     serve_cmd()
 else:
