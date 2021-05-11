@@ -13,7 +13,7 @@ sudo pip3 install awscli --upgrade
 
 You will need Python 3.8 or later installed. If your default Python is not 3.8 or later, run `python3.8 pernosco ...` below.
 
-Make sure a relatively recent `docker` is installed and on your `$PATH`. Make sure [rr](https://rr-project.org) 5.4.0 or higher is installed and on your path (and that `rr-collect-symbols.py` is on your `$PATH` too).
+Make sure a relatively recent `docker` is installed and on your `$PATH`. Make sure [rr](https://rr-project.org) 5.4.0 or higher is installed and on your path.
 
 Clone this respository and make sure the `pernosco` script is on your `$PATH`.
 
