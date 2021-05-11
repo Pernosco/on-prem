@@ -21,7 +21,7 @@ ImageName = NewType("ImageName", str)
 # Prerequisites (must be on PATH):
 #   AWS CLI
 #   docker
-#   rr (including rr-collect-symbols.py)
+#   rr
 
 arg_parser = argparse.ArgumentParser()
 arg_parser.add_argument("-x", dest='echo_commands', action='store_true', help="Echo spawned command lines")
