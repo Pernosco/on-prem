@@ -241,6 +241,11 @@ if len(output) > 0:
     print("Docker containers still running:\n%s"%output, file=sys.stderr)
     assert False
 
+subprocess.check_call(pernosco_cmd + ['--user', '1200', 'build', '--copy-sources', '/'], env=clean_env)
+
+zip_files = subprocess.check_output(["unzip", "-Z1", "%s/files.user/sources.zip"%trace_dir], encoding='utf-8').splitlines()
+assert "%s/pernosco-submit-test/out/message.h"%tmpdir in zip_files
+
 subprocess.check_call(['sudo', 'umount', testdir_alias])
 
 print("\nPASS", file=sys.stderr)
