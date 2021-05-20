@@ -41,6 +41,18 @@ build_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to buil
 build_subparser.add_argument("--copy-sources", action='append', default=[], help="Copy sources under this directory into the recording")
 build_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
 
+package_build_subparser = arg_subparsers.add_parser("package-build", help="Package an rr trace for Pernosco building (e.g. before copying it elsewhere)")
+package_build_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
+package_build_subparser.add_argument("--skip-rr", action='store_true', help="Skip steps that require host rr ('rr pack')")
+package_build_subparser.add_argument("--copy-sources", action='append', default=[], help="Copy sources under this directory into the recording")
+package_build_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
+
+only_build_subparser = arg_subparsers.add_parser("only-build", help="Build a Pernosco database without the packaging steps (e.g. after it has been copied from elsewhere)")
+only_build_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
+only_build_subparser.add_argument("--shards", help="The number of shards to use when building the database")
+only_build_subparser.add_argument("--check-trace", action='store_true', help="Run some checks on the trace to debug Pernosco")
+only_build_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to builder's rr")
+
 serve_subparser = arg_subparsers.add_parser("serve", help="Serve Pernosco UI for an rr trace and Pernosco database")
 serve_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
 serve_subparser.add_argument("--storage", help="Use this directory to store persistent data (i.e. notebook data)")
@@ -254,9 +266,11 @@ def collect_source_dirs() -> Tuple[List[str], Dict[str, str]]:
     return (source_dirs, comp_dir_substitutions)
 
 def build_cmd() -> None:
+    package_build()
+    only_build()
+
+def package_build() -> None:
     base.trace_dir = trace_dir()
-    check_docker_installed()
-    pull_if_needed(BUILDER_IMAGE)
     if not args.skip_rr:
         if not shutil.which('rr'):
             print("Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
@@ -269,6 +283,11 @@ def build_cmd() -> None:
     if len(source_dirs) > 0:
         sources.package_source_files(source_dirs, comp_dir_substitutions)
     set_default_user_sources()
+    only_build()
+
+def only_build() -> None:
+    check_docker_installed()
+    pull_if_needed(BUILDER_IMAGE)
     base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', base.trace_dir])
     read_write_mounts = [(base.trace_dir, "/trace")]
     container_args = ["--empty-umask"]
@@ -331,6 +350,10 @@ if args.subcommand == 'pull':
     pull_cmd()
 elif args.subcommand == 'build':
     build_cmd()
+elif args.subcommand == 'package-build':
+    package_build_cmd()
+elif args.subcommand == 'only-build':
+    only_build_cmd()
 elif args.subcommand == 'rr':
     rr_cmd()
 elif args.subcommand == 'serve':
