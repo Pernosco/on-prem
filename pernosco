@@ -351,9 +351,9 @@ if args.subcommand == 'pull':
 elif args.subcommand == 'build':
     build_cmd()
 elif args.subcommand == 'package-build':
-    package_build_cmd()
+    package_build()
 elif args.subcommand == 'only-build':
-    only_build_cmd()
+    only_build()
 elif args.subcommand == 'rr':
     rr_cmd()
 elif args.subcommand == 'serve':
