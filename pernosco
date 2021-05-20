@@ -287,6 +287,7 @@ def package_build() -> None:
 def only_build() -> None:
     check_docker_installed()
     pull_if_needed(BUILDER_IMAGE)
+    base.trace_dir = trace_dir()
     base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', base.trace_dir])
     read_write_mounts = [(base.trace_dir, "/trace")]
     container_args = ["--empty-umask"]
