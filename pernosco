@@ -283,7 +283,6 @@ def package_build() -> None:
     if len(source_dirs) > 0:
         sources.package_source_files(source_dirs, comp_dir_substitutions)
     set_default_user_sources()
-    only_build()
 
 def only_build() -> None:
     check_docker_installed()
