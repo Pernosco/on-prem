@@ -124,7 +124,9 @@ def maybe_docker_login() -> None:
     p2 = subprocess.Popen(cmd2, stdin=p1.stdout)
     p1.stdout.close()
     p2.communicate()
-    assert p2.returncode == 0
+    if p2.returncode != 0:
+        print("docker login failed with exit code %s"%p2.returncode, file=sys.stderr)
+        sys.exit(p2.returncode)
     did_docker_login = True
 
 def do_pull(image: str) -> None:
