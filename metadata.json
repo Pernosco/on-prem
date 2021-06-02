@@ -1,4 +1,5 @@
 {
   "db_builder_revision": "ac00b8eb10dca33d6654a24db32fb157b6cb8687",
-  "appserver_revision": "633367194190953e91486b6284d540f06361686f"
+  "appserver_revision": "633367194190953e91486b6284d540f06361686f",
+  "db_version_hash": "-P8pRKdW7PU_uA"
 }
