@@ -8,6 +8,7 @@ import json
 import os
 import random
 import shutil
+import socket
 import subprocess
 import sys
 
@@ -385,7 +386,7 @@ def serve_cmd() -> None:
             sys.exit(1)
         except subprocess.TimeoutExpired:
             # If it ran for a full second the arguments were probably correct.
-            print("Appserver tunneled to %s"%args.tunnel, flush=True)
+            print("Appserver tunneled to http://%s:%s/index.html"%(socket.getfqdn(), args.tunnel), flush=True)
             pass
 
     wait_for_container(container_id)
