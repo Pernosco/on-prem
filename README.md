@@ -30,9 +30,11 @@ pernosco build <trace-dir>
 
 Launch the Pernosco client application using
 ```
-pernosco serve --storage <storage-dir> --sources <source-dir> <trace-dir>
+pernosco serve --storage <storage-dir> --sources <source-dir> [--tunnel <tunnel parameters>] <trace-dir>
 ```
 where `<source-dir>` is a directory tree containing source files you want to make available in the client. The `--sources` option can be specified multiple times. The `<storage-dir>` should be a directory where Pernosco will store persistent data (e.g. notebook entries) for this trace. If you don't care about keeping state between runs of the client application, you can omit the `--storage` option.
+
+The optional `--tunnel` allows exposing the Pernosco UI outside of the local machine. This requires `socat` to be installed. Values of the form `--tunnel=80` (to expose Pernosco on an arbitrary port on all interfaces) and `--tunnel=1.2.3.4:80` (to expose Pernosco on the interface `1.2.3.4` only) are accepted.
 
 When the client application starts successfully, it will print something like
 ```
