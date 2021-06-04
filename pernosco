@@ -354,13 +354,14 @@ def serve_cmd() -> None:
 
     pull_if_needed(SERVER_IMAGE)
     read_write_mounts = []
-    container_args = ["--empty-umask", "--standalone", "--host", "0.0.0.0", "--serve-sources", "/sources"]
+    container_args = ["--empty-umask", "--standalone", "--host", "0.0.0.0"]
     if args.storage:
         base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', args.storage])
         read_write_mounts.append((args.storage, "/pernosco/storage"))
         container_args.extend(["--app-storage", "/pernosco/storage"])
     read_only_mounts = [(base.trace_dir, "/pernosco/database")]
     if args.sources:
+        container_args.extend(["--serve-sources", "/sources"])
         for s in args.sources:
             dirs = s.split('=', 1)
             for d in dirs:
