@@ -52,6 +52,10 @@ At minimum the machine running the builder and appserver needs CPU support for A
 
 Pernosco can be computationally expensive when processing long execution traces. Pernosco has been designed to be highly parallel and is capable of using a very large number of CPU cores. Parallelism during the build phase is controlled by the `--shards` argument to `pernosco build`. The default number of shards is 5, which can saturate an 18 core CPU. If you are running on fewer cores, you may want to try reducing the number of shards, and if you are running on more cores, increasing the number of shards. The smallest number of shards that can saturate your CPU is likely to give the best performance.
 
+## Limiting resource usage
+
+All Pernosco containers are placed in a `pernosco` cgroup. You can place CPU, memory, etc limitations on this cgroup as desired. This may be helpful if you are running Pernosco on an internally shared system and want to keep it from starving other tasks fo resources.
+
 ## Troubleshooting
 
 Pass `pernosco --log info=<log-file>` to capture a log. Pay attention to lines starting with `ERROR` or `WARN`. Contact [support](mailto:support@pernos.co) for assistance if necessary.
