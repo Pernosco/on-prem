@@ -54,7 +54,7 @@ Pernosco can be computationally expensive when processing long execution traces.
 
 ## Limiting resource usage
 
-All Pernosco containers are placed in a `pernosco` cgroup. You can place CPU, memory, etc limitations on this cgroup as desired. This may be helpful if you are running Pernosco on an internally shared system and want to keep it from starving other tasks fo resources.
+All Pernosco containers are placed in a `pernosco` cgroup. You can place CPU, memory, etc limitations on this cgroup as desired. This may be helpful if you are running Pernosco on an internally shared system and want to keep it from starving other tasks of resources.
 
 ## Troubleshooting
 
