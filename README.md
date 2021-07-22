@@ -98,7 +98,7 @@ The Pernosco on-prem packages derive from some GPLv3 code:
 The Pernosco on-prem packages contain a Software Bill of Materials (SBOM) that lists included open source software components. The SBOM can be used for compliance and security purposes. Running the command
 
 ```
-pernosco bom --dest-dir=<path>
+pernosco bom [path]
 ```
 
 will output the SBOM to the specified directory. If no directory is specified, the current directory is used. A separate file is produced for each container. These files are in the [CycloneDX](https://cyclonedx.org/) format. The third-party [cyclonedx-cli](https://github.com/CycloneDX/cyclonedx-cli) software can be used to diff these components across Pernosco versions to track changes in the constituent components. e.g. `docker run --rm --network none -v $PWD:/local-dir -it cyclonedx/cyclonedx-cli diff --output-format json /local-dir/old/app_server.xml /local-dir/new/app_server.xml`
