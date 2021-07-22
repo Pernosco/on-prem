@@ -24,12 +24,14 @@ ImageName = NewType("ImageName", str)
 #   docker
 #   rr
 
-arg_parser = argparse.ArgumentParser()
-arg_parser.add_argument("-x", dest='echo_commands', action='store_true', help="Echo spawned command lines")
-arg_parser.add_argument("--no-pull", action='store_true', help="Don't try to pull under any circumstances")
-arg_parser.add_argument("--log", help="(debug|info|warn|error):<file>: sets logging to the given level and writes the log to <file>.")
-arg_parser.add_argument("--user", help="Set a userid (name or numeric) to run the container as")
-arg_subparsers = arg_parser.add_subparsers(dest='subcommand')
+arg_parser = argparse.ArgumentParser(add_help=False)
+arg_subparsers = arg_parser.add_subparsers(dest='subcommand', title='Subcommands')
+global_opts_group = arg_parser.add_argument_group("Global Options")
+global_opts_group.add_argument("-h", "--help", action='help', help="Show this help message and exit")
+global_opts_group.add_argument("-x", dest='echo_commands', action='store_true', help="Echo spawned command lines")
+global_opts_group.add_argument("--no-pull", action='store_true', help="Don't try to pull under any circumstances")
+global_opts_group.add_argument("--log", help="(debug|info|warn|error):<file>: sets logging to the given level and writes the log to <file>.")
+global_opts_group.add_argument("--user", help="Set a userid (name or numeric) to run the container as")
 
 pull_subparser = arg_subparsers.add_parser("pull", help="Pull needed container images from Pernosco server. AWS credentials must be set in the environment.")
 
@@ -64,6 +66,9 @@ rr_subparser = arg_subparsers.add_parser("rr", help="Run the builder rr for diag
 rr_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
 rr_subparser.add_argument("rr_args", nargs=argparse.REMAINDER, help="rr parameters (use /trace to refer to the trace)")
 rr_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to builder's rr")
+
+bom_subparser = arg_subparsers.add_parser("bom", help="Extract the Software Bill of Materials from the container")
+bom_subparser.add_argument("dest_dir", nargs='?', help="Directory to place the SBOM files in")
 
 args = arg_parser.parse_args()
 
@@ -167,12 +172,16 @@ def ensure_isolated_network_created() -> None:
 # When 'network' is True, we create a network so the container can accept
 # incoming connections.
 # read_write_mounts and read_only_mounts are a list of pathname pairs (host_path, container_path)
-def start_container(image: ImageName, name: str, params: List[str], network: bool = False, env: Dict[str, str] = {},
-        read_write_mounts: List[Tuple[str, str]] = [], read_only_mounts: List[Tuple[str, str]] = [],
-        entrypoint: Optional[str] = None) -> ContainerId:
-    cmd = ['docker', 'run', '--cgroup-parent', 'pernosco', '--detach', '--name',
+def start_container(image: ImageName, name: str, params: List[str], detach: bool = True, network: bool = False,
+        rm: bool = False, env: Dict[str, str] = {}, read_write_mounts: List[Tuple[str, str]] = [],
+        read_only_mounts: List[Tuple[str, str]] = [], entrypoint: Optional[str] = None) -> ContainerId:
+    cmd = ['docker', 'run', '--cgroup-parent', 'pernosco', '--name',
            "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:]), '--security-opt', 'seccomp=unconfined',
            '--security-opt', 'apparmor=unconfined', '--tmpfs', '/tmp', '--env', 'RUST_BACKTRACE=full', '--init']
+    if detach:
+        cmd.extend(['--detach'])
+    if rm:
+        cmd.extend(['--rm'])
     if args.user:
         cmd.extend(['--user', args.user])
     if log_level:
@@ -333,6 +342,23 @@ def rr_cmd() -> None:
         env=env, entrypoint="/usr/local/bin/rr", read_write_mounts=read_write_mounts)
     wait_for_container(container_id)
 
+def bom_cmd() -> None:
+    dest_dir = os.getcwd()
+    if args.dest_dir:
+        assert isinstance(args.dest_dir, str)
+        dest_dir = args.dest_dir
+    check_docker_installed()
+    pull_if_needed(BUILDER_IMAGE)
+    pull_if_needed(SERVER_IMAGE)
+    builder_bom = start_container(BUILDER_IMAGE, "db_builder-bom", ["-c", "cat /sbom.xml"],
+        detach=False, rm=True, entrypoint="/bin/bash")
+    server_bom = start_container(SERVER_IMAGE, "app_server-bom", ["-c", "cat /sbom.xml"],
+        detach=False, rm=True, entrypoint="/bin/bash")
+    with open(os.path.join(dest_dir, 'db_builder.xml'), "w") as f:
+        print(builder_bom, file=f)
+    with open(os.path.join(dest_dir, 'app_server.xml'), "w") as f:
+        print(server_bom, file=f)
+
 def serve_cmd() -> None:
     base.trace_dir = trace_dir()
     check_docker_installed()
@@ -402,6 +428,8 @@ elif args.subcommand == 'only-build':
     only_build_cmd()
 elif args.subcommand == 'rr':
     rr_cmd()
+elif args.subcommand == 'bom':
+    bom_cmd()
 elif args.subcommand == 'serve':
     serve_cmd()
 else:
