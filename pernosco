@@ -175,7 +175,7 @@ def ensure_isolated_network_created() -> None:
 def start_container(image: ImageName, name: str, params: List[str], detach: bool = True, network: bool = False,
         rm: bool = False, env: Dict[str, str] = {}, read_write_mounts: List[Tuple[str, str]] = [],
         read_only_mounts: List[Tuple[str, str]] = [], entrypoint: Optional[str] = None) -> ContainerId:
-    cmd = ['docker', 'run', '--cgroup-parent', 'pernosco', '--name',
+    cmd = ['docker', 'run', '--cgroup-parent', '/pernosco/', '--name',
            "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:]), '--security-opt', 'seccomp=unconfined',
            '--security-opt', 'apparmor=unconfined', '--tmpfs', '/tmp', '--env', 'RUST_BACKTRACE=full', '--init']
     if detach:
