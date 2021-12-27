@@ -149,7 +149,13 @@ record()
 if not args.no_pull:
     subprocess.check_call(['./pernosco', 'pull'])
 
-subprocess.check_call(pernosco_cmd + ['--user', '1200', 'build', '--check-trace'], env=clean_env)
+subprocess.check_call(pernosco_cmd + ['--user', '1200', 'build', '--check-trace', '--system-debuginfo', 's3://pernosco-system-debuginfo-overlays'], env=clean_env)
+
+lsb_release = subprocess.check_output(['lsb_release', '-a'], encoding='utf-8')
+if "Ubuntu" in lsb_release:
+    # We should have added some sources.system-debuginfo files from overlays
+    sources_files = glob.glob("%s/sources.system-debuginfo-*"%trace_dir)
+    assert len(sources_files) > 0
 
 os.mkdir(storage_dir)
 

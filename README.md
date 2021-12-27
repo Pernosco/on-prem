@@ -84,6 +84,12 @@ This confinement largely ensures our containers can't modify or leak data even i
 
 We disable seccomp syscall filtering and AppArmor in our containers using Docker's `seccomp=unconfined` and `apparmor=unconfined`. The former is necessary because Pernosco uses somewhat exotic syscalls such as `ptrace`, `mount`, `unshare` and `userfaultfd`. The latter is necessary because AppArmor can interfere with operations such as mounting tmpfs in our nested sandboxes. Our containers are still effectively confined by Docker's namespace sandboxing.
 
+### Access to system-debuginfo repositories
+
+Using the `--system-debuginfo` parameter to `pernosco build` and `pernosco package-build` causes packages of relevant system debuginfo to be downloaded from the specified S3 bucket or file system. If you use `s3://pernosco-system-debuginfo-overlays`, that will make requests to our S3 bucket that we could monitor, exposing which Ubuntu packages you might be using with Pernosco. If this is a problem, don't use `--system-debuginfo`, or mirror our bucket to your own bucket or local file server and pass its location to `--system-debuginfo`.
+
+If our bucket is missing some packages or distributions that you want debuginfo for, let us know. Currently we support a subset of library packages, on all Ubuntu releases. Access to `s3://pernosco-system-debuginfo-overlays` requires your on-prem AWS credentials.
+
 ## Distro-specific advice
 
 ### Debian

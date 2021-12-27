@@ -15,6 +15,7 @@ import sys
 import pernoscoshared.base as base
 import pernoscoshared.packaging as packaging
 import pernoscoshared.sources as sources
+import pernoscoshared.systemdebuginfo as systemdebuginfo
 
 ContainerId = NewType("ContainerId", str)
 ImageName = NewType("ImageName", str)
@@ -42,12 +43,14 @@ build_subparser.add_argument("--skip-rr", action='store_true', help="Skip steps 
 build_subparser.add_argument("--check-trace", action='store_true', help="Run some checks on the trace to debug Pernosco")
 build_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to builder's rr")
 build_subparser.add_argument("--copy-sources", action='append', default=[], help="Copy sources under this directory into the recording")
+build_subparser.add_argument("--system-debuginfo", action='append', default=[], help="Pull system debuginfo from repository (e.g. s3://pernosco-system-debuginfo-overlays or /home/debuginfo-overlays-mirror)")
 build_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
 
 package_build_subparser = arg_subparsers.add_parser("package-build", help="Prepare an rr trace for Pernosco building (e.g. before copying it elsewhere) by injecting necessary sources and debuginfo")
 package_build_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace to be prepared in-place")
 package_build_subparser.add_argument("--skip-rr", action='store_true', help="Skip steps that require host rr ('rr pack')")
 package_build_subparser.add_argument("--copy-sources", action='append', default=[], help="Copy sources under this directory into the recording")
+package_build_subparser.add_argument("--system-debuginfo", action='append', default=[], help="Pull system debuginfo from repository (e.g. s3://pernosco-system-debuginfo-overlays or /home/debuginfo-overlays-mirror)")
 package_build_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
 
 only_build_subparser = arg_subparsers.add_parser("only-build", help="Build a Pernosco database without the packaging steps (e.g. after it has been copied from elsewhere)")
@@ -307,6 +310,10 @@ def package_build_cmd() -> None:
     (source_dirs, comp_dir_substitutions) = collect_source_dirs()
     if len(source_dirs) > 0:
         sources.package_source_files(source_dirs, comp_dir_substitutions)
+    if len(args.system_debuginfo) > 0:
+        build_ids = systemdebuginfo.collect_candidate_build_ids()
+        for path in args.system_debuginfo:
+            systemdebuginfo.apply_system_debuginfo(path, build_ids)
     set_default_user_sources()
 
 def only_build_cmd() -> None:
