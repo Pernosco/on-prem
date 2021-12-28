@@ -23,8 +23,7 @@ def collect_candidate_build_ids() -> Mapping[str, bool]:
     for build_id in build_id_text.split("\n"):
         if len(build_id) == 0:
             continue
-        if not os.path.exists("%s/debug/.build-id/%s/%s.debug"%(base.trace_dir, build_id[:2], build_id[2:])):
-            ret[build_id] = True
+        ret[build_id] = True
     return ret
 
 # resource is, e.g., trace-overlay.manifest.xz
