@@ -42,7 +42,6 @@ def read_manifest(overlays_path: str) -> TraceOverlayManifest:
 
 def apply_overlay(overlays_path: str, overlay: str) -> None:
     assert base.trace_dir
-    print("apply_overlay %s from %s"%(overlay, overlays_path))
     with debuginfo_resource_reader(overlays_path, overlay) as xz_reader:
         with subprocess.Popen(["tar", "-Jxf", "-"], cwd=base.trace_dir, stdin=xz_reader.stdout) as tar_proc:
             tar_proc.communicate()
@@ -55,15 +54,11 @@ def apply_system_debuginfo(overlays_path: str, build_ids: Mapping[str, bool]) ->
     assert base.trace_dir
     if len(build_ids) == 0:
         return
-    print("build_ids %s"%build_ids);
     manifest = read_manifest(overlays_path)
     overlays = {}
     for key, value in manifest['overlays'].items():
-        print("Key %s"%key);
         for v in value:
-            print("\tValue %s"%v);
             if v in build_ids:
-                print("HIT for %s"%key)
                 overlays[key] = True
     # Do things deterministically to make bugs more reproducible
     for o in sorted(overlays):
