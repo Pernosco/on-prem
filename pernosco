@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.8
 
 from __future__ import annotations
 from typing import Optional, List, Pattern, Callable, Tuple, Dict, TypedDict, Any, Mapping, cast, Union, NewType
