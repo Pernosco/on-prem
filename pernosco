@@ -35,6 +35,8 @@ global_opts_group.add_argument("--log", help="(debug|info|warn|error):<file>: se
 global_opts_group.add_argument("--user", help="Set a userid (name or numeric) to run the container as")
 
 pull_subparser = arg_subparsers.add_parser("pull", help="Pull needed container images from Pernosco server. AWS credentials must be set in the environment.")
+pull_subparser = arg_subparsers.add_parser("save", help="Save needed container images for Pernosco server. AWS credentials must be set in the environment.")
+pull_subparser = arg_subparsers.add_parser("load", help="Load needed container images for Pernosco server. Internet connectivity not required.")
 
 build_subparser = arg_subparsers.add_parser("build", help="Build database for rr trace")
 build_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
@@ -102,6 +104,8 @@ BUILDER_REPOSITORY = '%s/customers/db-builder'%REPOSITORY_HOST
 SERVER_REPOSITORY = '%s/customers/app-server'%REPOSITORY_HOST
 BUILDER_IMAGE = ImageName("%s:%s"%(BUILDER_REPOSITORY, metadata['db_builder_revision']))
 SERVER_IMAGE = ImageName("%s:%s"%(SERVER_REPOSITORY, metadata['appserver_revision']))
+BUILDER_IMAGE_FILENAME = 'db-builder.%s.tar'%metadata['db_builder_revision']
+SERVER_IMAGE_FILENAME = 'app-server.%s.tar'%metadata['appserver_revision']
 PERNOSCO_ISOLATED_NETWORK = "pernosco-isolated-network"
 
 def check_docker_installed() -> None:
@@ -156,11 +160,46 @@ def pull_cmd() -> None:
     do_pull(BUILDER_IMAGE)
     do_pull(SERVER_IMAGE)
 
+def check_if_image_exists(image: ImageName) -> bool:
+    return not base.call(['docker', 'image', 'inspect', image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
 def pull_if_needed(image: ImageName) -> None:
-    ret = base.call(['docker', 'image', 'inspect', image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    if ret == 0:
+    if not check_if_image_exists(image):
+        do_pull(image)
+
+def do_save(image: str, filename: str) -> None:
+    pull_if_needed(image)
+    ret = base.call(['docker', 'image', 'save', image, '-o', filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if ret != 0:
+        print("Failed to save %s, aborting"%image, file=sys.stderr)
+        sys.exit(1)
+
+def save_cmd() -> None:
+    check_docker_installed()
+    do_save(BUILDER_IMAGE, BUILDER_IMAGE_FILENAME)
+    do_save(SERVER_IMAGE, SERVER_IMAGE_FILENAME)
+
+def do_load(filename: str) -> None:
+    ret = base.call(['docker', 'image', 'load', '-i', filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if ret != 0:
+        print("Failed to load %s, aborting"%filename, file=sys.stderr)
+        sys.exit(1)
+
+def load_if_needed(image: str, filename: str) -> None:
+    if check_if_image_exists(image):
+        print('%s already loaded'%image)
         return
-    do_pull(image)
+    do_load(filename)
+    if check_if_image_exists(image):
+        print("%s successfully loaded"%image)
+    else:
+        print("Cannot find %s after loading %s, aborting"%(image, filename), file=sys.stderr)
+        sys.exit(1)
+
+def load_cmd() -> None:
+    check_docker_installed()
+    load_if_needed(BUILDER_IMAGE, BUILDER_IMAGE_FILENAME)
+    load_if_needed(SERVER_IMAGE, SERVER_IMAGE_FILENAME)
 
 def ensure_isolated_network_created() -> None:
     ret = base.call(['docker', 'network', 'inspect', PERNOSCO_ISOLATED_NETWORK], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -427,6 +466,10 @@ def serve_cmd() -> None:
 
 if args.subcommand == 'pull':
     pull_cmd()
+elif args.subcommand == 'save':
+    save_cmd()
+elif args.subcommand == 'load':
+    load_cmd()
 elif args.subcommand == 'build':
     build_cmd()
 elif args.subcommand == 'package-build':
