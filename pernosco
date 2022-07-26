@@ -33,6 +33,8 @@ global_opts_group.add_argument("-x", dest='echo_commands', action='store_true', 
 global_opts_group.add_argument("--no-pull", action='store_true', help="Don't try to pull under any circumstances")
 global_opts_group.add_argument("--log", help="(debug|info|warn|error):<file>: sets logging to the given level and writes the log to <file>.")
 global_opts_group.add_argument("--user", help="Set a userid (name or numeric) to run the container as")
+global_opts_group.add_argument("--container-runtime", help="Set docker or podman as the runtime", default="docker")
+
 
 pull_subparser = arg_subparsers.add_parser("pull", help="Pull needed container images from Pernosco server. AWS credentials must be set in the environment.")
 pull_subparser = arg_subparsers.add_parser("save", help="Save needed container images for Pernosco server. AWS credentials must be set in the environment.")
@@ -109,13 +111,8 @@ SERVER_IMAGE_FILENAME = 'app-server.%s.tar'%metadata['appserver_revision']
 PERNOSCO_ISOLATED_NETWORK = "pernosco-isolated-network"
 
 def check_docker_installed() -> None:
-    if not shutil.which('docker'):
-        print("Please install docker", file=sys.stderr)
-        sys.exit(1)
-
-def check_socat_installed() -> None:
-    if not shutil.which('socat'):
-        print("Please install socat", file=sys.stderr)
+    if not shutil.which(args.container_runtime):
+        print("Please install %s"%args.container_runtime, file=sys.stderr)
         sys.exit(1)
 
 did_docker_login: bool = False
@@ -136,7 +133,7 @@ def maybe_docker_login() -> None:
         sys.exit(1)
 
     cmd1 = ['aws', 'ecr', 'get-login-password', '--region', REPOSITORY_REGION]
-    cmd2 = ['docker', 'login', '--username', 'AWS', '--password-stdin', REPOSITORY_HOST]
+    cmd2 = [args.container_runtime, 'login', '--username', 'AWS', '--password-stdin', REPOSITORY_HOST]
     base.maybe_echo(cmd1 + ["|"] + cmd2)
     p1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
     assert p1.stdout
@@ -153,7 +150,7 @@ def do_pull(image: str) -> None:
         print("Need to pull %s but --no-pull specified, aborting"%image, file=sys.stderr)
         sys.exit(1)
     maybe_docker_login()
-    base.check_call(['docker', 'image', 'pull', image])
+    base.check_call([args.container_runtime, 'image', 'pull', image])
 
 def pull_cmd() -> None:
     check_docker_installed()
@@ -161,7 +158,7 @@ def pull_cmd() -> None:
     do_pull(SERVER_IMAGE)
 
 def check_if_image_exists(image: ImageName) -> bool:
-    return not base.call(['docker', 'image', 'inspect', image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    return not base.call([args.container_runtime, 'image', 'inspect', image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def pull_if_needed(image: ImageName) -> None:
     if not check_if_image_exists(image):
@@ -169,7 +166,7 @@ def pull_if_needed(image: ImageName) -> None:
 
 def do_save(image: str, filename: str) -> None:
     pull_if_needed(image)
-    ret = base.call(['docker', 'image', 'save', image, '-o', filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ret = base.call([args.container_runtime, 'image', 'save', image, '-o', filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if ret != 0:
         print("Failed to save %s, aborting"%image, file=sys.stderr)
         sys.exit(1)
@@ -180,7 +177,7 @@ def save_cmd() -> None:
     do_save(SERVER_IMAGE, SERVER_IMAGE_FILENAME)
 
 def do_load(filename: str) -> None:
-    ret = base.call(['docker', 'image', 'load', '-i', filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ret = base.call([args.container_runtime, 'image', 'load', '-i', filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if ret != 0:
         print("Failed to load %s, aborting"%filename, file=sys.stderr)
         sys.exit(1)
@@ -202,10 +199,10 @@ def load_cmd() -> None:
     load_if_needed(SERVER_IMAGE, SERVER_IMAGE_FILENAME)
 
 def ensure_isolated_network_created() -> None:
-    ret = base.call(['docker', 'network', 'inspect', PERNOSCO_ISOLATED_NETWORK], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    ret = base.call([args.container_runtime, 'network', 'inspect', PERNOSCO_ISOLATED_NETWORK], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if ret == 0:
         return
-    base.check_call(['docker', 'network', 'create', PERNOSCO_ISOLATED_NETWORK, "--internal"])
+    base.check_call([args.container_runtime, 'network', 'create', PERNOSCO_ISOLATED_NETWORK, "--internal"])
 
 # Starts a container. We confine the container as much as possible.
 # The container is unable to connect to the outside world via its network,
@@ -216,8 +213,9 @@ def ensure_isolated_network_created() -> None:
 # read_write_mounts and read_only_mounts are a list of pathname pairs (host_path, container_path)
 def start_container(image: ImageName, name: str, params: List[str], detach: bool = True, network: bool = False,
         rm: bool = False, env: Dict[str, str] = {}, read_write_mounts: List[Tuple[str, str]] = [],
-        read_only_mounts: List[Tuple[str, str]] = [], entrypoint: Optional[str] = None) -> ContainerId:
-    cmd = ['docker', 'run', '--cgroup-parent', '/pernosco/', '--name',
+        read_only_mounts: List[Tuple[str, str]] = [], entrypoint: Optional[str] = None,
+        publish_port: bool = False, publish_address: str = None) -> ContainerId:
+    cmd = [args.container_runtime, 'run', '--cgroup-parent', '/pernosco/', '--name',
            "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:]), '--security-opt', 'seccomp=unconfined',
            '--security-opt', 'apparmor=unconfined', '--tmpfs', '/tmp', '--env', 'RUST_BACKTRACE=full', '--init']
     if detach:
@@ -241,6 +239,10 @@ def start_container(image: ImageName, name: str, params: List[str], detach: bool
         cmd.extend(['--network', PERNOSCO_ISOLATED_NETWORK])
     else:
         cmd.extend(['--network', 'none'])
+    if args.container_runtime == 'podman':
+        cmd.extend(['--cgroup-manager=cgroupfs'])
+    if publish_port:
+        cmd.extend(['--publish', '%s:3000/tcp'%publish_address])
     cmd.append(image)
     cmd.extend(params)
     # Avoid using 'encoding' parameter to check_output because it was only
@@ -248,13 +250,13 @@ def start_container(image: ImageName, name: str, params: List[str], detach: bool
     return ContainerId(base.check_output(cmd).decode().strip())
 
 def stop_container(container_id: ContainerId) -> None:
-    base.call(['docker', 'stop', container_id])
+    base.call([args.container_runtime, 'stop', container_id])
 
 def cleanup_container(container_id: ContainerId) -> None:
-    base.check_call(['docker', 'rm', '--force', '--volumes', container_id], stdout=subprocess.DEVNULL)
+    base.check_call([args.container_runtime, 'rm', '--force', '--volumes', container_id], stdout=subprocess.DEVNULL)
 
 def wait_for_container(container_id: ContainerId) -> None:
-    p = base.Popen(['docker', 'logs', '--follow', container_id], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    p = base.Popen([args.container_runtime, 'logs', '--follow', container_id], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     assert p.stdout
     ret = None
     f = None
@@ -282,7 +284,7 @@ def wait_for_container(container_id: ContainerId) -> None:
     if ret == None:
         # Avoid using 'encoding' parameter to check_output because it was only
         # added in Python 3.6.
-        ret = int(base.check_output(['docker', 'wait', container_id]).decode().rstrip())
+        ret = int(base.check_output([args.container_runtime, 'wait', container_id]).decode().rstrip())
 
     cleanup_container(container_id)
 
@@ -293,7 +295,7 @@ def wait_for_container(container_id: ContainerId) -> None:
         sys.exit(1)
 
 def container_ip_address(container_id: ContainerId) -> str:
-    output = json.loads(base.check_output(['docker', 'inspect', container_id]))
+    output = json.loads(base.check_output([args.container_runtime, 'inspect', container_id]))
     ret = output[0]['NetworkSettings']['Networks'][PERNOSCO_ISOLATED_NETWORK]['IPAddress']
     assert isinstance(ret, str)
     return ret
@@ -408,9 +410,9 @@ def bom_cmd() -> None:
 def serve_cmd() -> None:
     base.trace_dir = trace_dir()
     check_docker_installed()
+    tunnel_port = 3000
+    tunnel_address = "0.0.0.0"
     if args.tunnel:
-        check_socat_installed()
-
         tunnel_args = args.tunnel.rsplit(':', 1)
         port_arg = tunnel_args.pop()
         try:
@@ -420,9 +422,7 @@ def serve_cmd() -> None:
             sys.exit(1)
 
         if tunnel_args:
-            tunnel_address = ",bind=%s"%tunnel_args.pop()
-        else:
-            tunnel_address = ""
+            tunnel_address = "%s"%tunnel_args.pop()
 
     pull_if_needed(SERVER_IMAGE)
     read_write_mounts = []
@@ -446,21 +446,11 @@ def serve_cmd() -> None:
                 read_only_mounts.append((dirs[1], "/sources%s"%dirs[0]))
     env = {'PERNOSCO_ENABLE_VARIABLES_ANNOTATIONS': '0'}
     container_id = start_container(SERVER_IMAGE, "app_server", container_args,
-        env=env, network=True, read_only_mounts=read_only_mounts, read_write_mounts=read_write_mounts)
+        env=env, network=True, read_only_mounts=read_only_mounts, read_write_mounts=read_write_mounts, publish_port=args.tunnel, publish_address="%s:%s"%(tunnel_address, tunnel_port))
     ip_address = container_ip_address(container_id)
     print("Appserver launched at http://%s:3000/index.html"%ip_address, flush=True);
     if args.tunnel:
-        tunnel = subprocess.Popen(['socat', 'tcp-l:%s%s,fork,reuseaddr'%(tunnel_port, tunnel_address), 'tcp:%s:3000'%ip_address])
-        try:
-            tunnel.wait(1)
-            print("socat exited prematurely, tunnel failed", file=sys.stderr)
-            stop_container(container_id)
-            cleanup_container(container_id)
-            sys.exit(1)
-        except subprocess.TimeoutExpired:
-            # If it ran for a full second the arguments were probably correct.
-            print("Appserver tunneled to http://%s:%s/index.html"%(socket.getfqdn(), args.tunnel), flush=True)
-            pass
+        print("Appserver tunneled to http://%s:%s/index.html"%(tunnel_address, tunnel_port))
 
     wait_for_container(container_id)
 
