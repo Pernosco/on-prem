@@ -332,6 +332,7 @@ def only_build_cmd() -> None:
     env = {}
     if args.builder_rr_log:
         env['RR_LOG'] = args.builder_rr_log
+        env['RR_LOG_FILE'] = "/trace/rr.log"
     container_id = start_container(BUILDER_IMAGE, "db_builder", container_args,
         env=env, entrypoint="/bin/bash", read_write_mounts=read_write_mounts)
     wait_for_container(container_id)
