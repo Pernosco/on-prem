@@ -56,6 +56,10 @@ Pernosco can be computationally expensive when processing long execution traces.
 
 It can be useful to process Pernosco recordings on a shared server instead of locally. You can make an rr recording locally, run `pernosco package-build` on it, copy the trace directory to a server, and there run `pernosco only-build` and `pernosco serve --tunnel`.
 
+## Using Pernosco offline
+
+The `pernosco save-containers` and `pernosco load-containers` commands can be used to run pernosco on an airgapped machine by transferring just this repositority and the saved container files.
+
 ## Limiting resource usage
 
 All Pernosco containers are placed in a `pernosco` cgroup. You can place CPU, memory, etc limitations on this cgroup as desired. This may be helpful if you are running Pernosco on an internally shared system and want to keep it from starving other tasks of resources.

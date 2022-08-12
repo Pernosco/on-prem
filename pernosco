@@ -33,8 +33,7 @@ global_opts_group.add_argument("-x", dest='echo_commands', action='store_true', 
 global_opts_group.add_argument("--no-pull", action='store_true', help="Don't try to pull under any circumstances")
 global_opts_group.add_argument("--log", help="(debug|info|warn|error):<file>: sets logging to the given level and writes the log to <file>.")
 global_opts_group.add_argument("--user", help="Set a userid (name or numeric) to run the container as")
-global_opts_group.add_argument("--container-runtime", help="Set docker or podman as the runtime", default="docker")
-
+global_opts_group.add_argument("--container-runtime", help="Set docker or podman as the runtime (use podman at your own risk!)", default="docker")
 
 pull_subparser = arg_subparsers.add_parser("pull", help="Pull needed container images from Pernosco server. AWS credentials must be set in the environment.")
 pull_subparser = arg_subparsers.add_parser("save-containers", help="Save needed container images for Pernosco server. AWS credentials must be set in the environment.")
