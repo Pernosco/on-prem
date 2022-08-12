@@ -164,7 +164,7 @@ def pull_if_needed(image: ImageName) -> None:
     if not check_if_image_exists(image):
         do_pull(image)
 
-def do_save_containers(image: str, filename: str) -> None:
+def do_save_container(image: str, filename: str) -> None:
     pull_if_needed(image)
     ret = base.call([args.container_runtime, 'image', 'save', image, '-o', filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if ret != 0:
@@ -173,20 +173,20 @@ def do_save_containers(image: str, filename: str) -> None:
 
 def save_containers_cmd() -> None:
     check_docker_installed()
-    do_save_containers(BUILDER_IMAGE, BUILDER_IMAGE_FILENAME)
-    do_save_containers(SERVER_IMAGE, SERVER_IMAGE_FILENAME)
+    do_save_container(BUILDER_IMAGE, BUILDER_IMAGE_FILENAME)
+    do_save_container(SERVER_IMAGE, SERVER_IMAGE_FILENAME)
 
-def do_load_containers(filename: str) -> None:
+def do_load_container(filename: str) -> None:
     ret = base.call([args.container_runtime, 'image', 'load', '-i', filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if ret != 0:
         print("Failed to load %s, aborting"%filename, file=sys.stderr)
         sys.exit(1)
 
-def load_containers_if_needed(image: str, filename: str) -> None:
+def load_container_if_needed(image: str, filename: str) -> None:
     if check_if_image_exists(image):
         print('%s already loaded'%image)
         return
-    do_load_containers(filename)
+    do_load_container(filename)
     if check_if_image_exists(image):
         print("%s successfully loaded"%image)
     else:
@@ -195,8 +195,8 @@ def load_containers_if_needed(image: str, filename: str) -> None:
 
 def load_containers_cmd() -> None:
     check_docker_installed()
-    load_containers_if_needed(BUILDER_IMAGE, BUILDER_IMAGE_FILENAME)
-    load_containers_if_needed(SERVER_IMAGE, SERVER_IMAGE_FILENAME)
+    load_container_if_needed(BUILDER_IMAGE, BUILDER_IMAGE_FILENAME)
+    load_container_if_needed(SERVER_IMAGE, SERVER_IMAGE_FILENAME)
 
 def ensure_isolated_network_created() -> None:
     ret = base.call([args.container_runtime, 'network', 'inspect', PERNOSCO_ISOLATED_NETWORK], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
