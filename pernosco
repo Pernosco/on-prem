@@ -349,7 +349,7 @@ def package_build_cmd() -> None:
     packaging.package_libthread_db()
     (source_dirs, comp_dir_substitutions) = collect_source_dirs()
     if len(source_dirs) > 0:
-        sources.package_source_files(source_dirs, comp_dir_substitutions)
+        sources.package_source_files(source_dirs, source_dirs, comp_dir_substitutions)
     if len(args.system_debuginfo) > 0:
         build_ids = systemdebuginfo.collect_candidate_build_ids()
         for path in args.system_debuginfo:
