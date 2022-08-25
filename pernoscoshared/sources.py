@@ -457,6 +457,9 @@ gdb_paths: List[str] = [
     'tools/gdb',
     'third_party/libcxx-pretty-printers',
     'third_party/blink/tools/gdb',
+    'third_party/skia/tools/gdb',
+    'v8/tools/gdbinit',
+    'v8/tools/gdb-v8-support.py',
 ]
 
 def package_gdbinit(repo_paths: List[str], out_dir: str) -> None:
@@ -482,8 +485,11 @@ import sys
 sys.path.insert(0, "/trace/gdbinit/%s/tools/gdb/")
 sys.path.insert(0, "/trace/gdbinit/%s/third-party/libcxx-pretty-printers/")
 import gdb_chrome
-from libcxx.v1.printers import register_libcxx_printers
-register_libcxx_printers(None)
+try:
+    from libcxx.v1.printers import register_libcxx_printers
+    register_libcxx_printers(None)
+except Exception:
+    pass
 gdb.execute('source /trace/gdbinit/%s/tools/gdb/viewg.gdb')
 end
 """%(sub_path, sub_path, sub_path))
