@@ -330,7 +330,7 @@ def package_debuginfo_from_sources_json(rr_sources: RrSources, output_dir: str) 
             dst = "{0:s}/{1:0{2}x}.dwo".format(dir, d['id'], 16)
             if os.path.isfile(path):
                 base.copy_replace_file(path, dst)
-            else if not os.path.isfile(dst):
+            elif not os.path.isfile(dst):
                 print("Can't find DWO file %s, skipping"%path, file=sys.stderr)
 
     # Copy external debuginfo into place
