@@ -399,13 +399,13 @@ def bom_cmd() -> None:
     check_docker_installed()
     pull_if_needed(BUILDER_IMAGE)
     pull_if_needed(SERVER_IMAGE)
-    builder_bom = start_container(BUILDER_IMAGE, "db_builder-bom", ["-c", "cat /sbom.xml"],
+    builder_bom = start_container(BUILDER_IMAGE, "db_builder-bom", ["-c", "cat /sbom.json"],
         detach=False, rm=True, entrypoint="/bin/bash")
-    server_bom = start_container(SERVER_IMAGE, "app_server-bom", ["-c", "cat /sbom.xml"],
+    server_bom = start_container(SERVER_IMAGE, "app_server-bom", ["-c", "cat /sbom.json"],
         detach=False, rm=True, entrypoint="/bin/bash")
-    with open(os.path.join(dest_dir, 'db_builder.xml'), "w") as f:
+    with open(os.path.join(dest_dir, 'db_builder.json'), "w") as f:
         print(builder_bom, file=f)
-    with open(os.path.join(dest_dir, 'app_server.xml'), "w") as f:
+    with open(os.path.join(dest_dir, 'app_server.json'), "w") as f:
         print(server_bom, file=f)
 
 def serve_cmd() -> None:
