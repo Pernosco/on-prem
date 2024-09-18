@@ -205,6 +205,36 @@ def ensure_isolated_network_created() -> None:
         return
     base.check_call([args.container_runtime, 'network', 'create', PERNOSCO_ISOLATED_NETWORK, "--internal"])
 
+def determine_cgroup_parent() -> str:
+    cgroups_version = 1
+    if args.container_runtime == 'docker':
+        cgroups_version = int(base.check_output([
+            args.container_runtime, 'system', 'info', '--format', '{{json .CgroupVersion}}'
+        ]).decode().strip('\n"'))
+    elif args.container_runtime == 'podman':
+        try:
+            cgroups_version = int(base.check_output([
+                args.container_runtime, 'system', 'info', '--format', '{{json .Host.CgroupsVersion}}'
+            ]).decode().strip('\n"'))
+        except subprocess.CalledProcessError as e:
+            # Older versions of podman had different capitalization.
+            try:
+                cgroups_version = int(base.check_output([
+                    args.container_runtime, 'system', 'info', '--format', '{{json .Host.CGroupsVersion}}'
+                ]).decode().strip('\n"'))
+            except:
+                raise e
+    else:
+        print("Can't tell whether %s is docker or podman"%args.container_runtime, file=sys.stderr)
+
+    if cgroups_version == 2:
+        return 'pernosco.slice'
+    elif cgroups_version == 1:
+        return '/pernosco/'
+    else:
+        print("Unsupported cgroups version %d, aborting"%cgroups_version, file=sys.stderr)
+        sys.exit(1)
+
 # Starts a container. We confine the container as much as possible.
 # The container is unable to connect to the outside world via its network,
 # but it can make arbitrary DNS requests. Unfortunately Docker doesn't
@@ -216,7 +246,8 @@ def start_container(image: ImageName, name: str, params: List[str], detach: bool
         rm: bool = False, env: Dict[str, str] = {}, read_write_mounts: List[Tuple[str, str]] = [],
         read_only_mounts: List[Tuple[str, str]] = [], entrypoint: Optional[str] = None,
         publish_port: bool = False, publish_address: str = None) -> ContainerId:
-    cmd = [args.container_runtime, 'run', '--cgroup-parent', '/pernosco/', '--name',
+    cgroup_parent = determine_cgroup_parent()
+    cmd = [args.container_runtime, 'run', '--cgroup-parent', cgroup_parent, '--name',
            "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:]), '--security-opt', 'seccomp=unconfined',
            '--security-opt', 'apparmor=unconfined', '--tmpfs', '/tmp', '--env', 'RUST_BACKTRACE=full', '--init']
     if detach:
@@ -240,8 +271,6 @@ def start_container(image: ImageName, name: str, params: List[str], detach: bool
         cmd.extend(['--network', PERNOSCO_ISOLATED_NETWORK])
     else:
         cmd.extend(['--network', 'none'])
-    if args.container_runtime == 'podman':
-        cmd.extend(['--cgroup-manager=cgroupfs'])
     if publish_port:
         cmd.extend(['--publish', '%s:3000/tcp'%publish_address])
     cmd.append(image)
@@ -441,7 +470,7 @@ def serve_cmd() -> None:
             dirs = s.split('=', 1)
             for d in dirs:
                 if not os.path.isabs(d):
-                    print("Source path %s is not absolute, aborting."%d, file=sys.stderr);
+                    print("Source path %s is not absolute, aborting."%d, file=sys.stderr)
                     sys.exit(1)
             if len(dirs) == 1:
                 read_only_mounts.append((dirs[0], "/sources%s"%dirs[0]))
@@ -451,7 +480,7 @@ def serve_cmd() -> None:
     container_id = start_container(SERVER_IMAGE, "app_server", container_args,
         env=env, network=True, read_only_mounts=read_only_mounts, read_write_mounts=read_write_mounts, publish_port=args.tunnel, publish_address="%s:%s"%(tunnel_address, tunnel_port))
     ip_address = container_ip_address(container_id)
-    print("Appserver launched at http://%s:3000/index.html"%ip_address, flush=True);
+    print("Appserver launched at http://%s:3000/index.html"%ip_address, flush=True)
     if args.tunnel:
         print("Appserver tunneled to http://%s:%s/index.html"%(tunnel_address, tunnel_port))
 
