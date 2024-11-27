@@ -84,6 +84,15 @@ This confinement largely ensures our containers can't modify or leak data even i
 * `docker` runs an embedded DNS server accessible to every container which [cannot be disabled](https://github.com/moby/moby/issues/19474). Thus in principle a malicious container could leak information to the outside world via DNS requests. This potential threat could be blocked by blocking DNS on the host.
 * Our Web client uses [CSP](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP) to confine itself, preventing it from communicating with any Web servers other than the on-premises Pernosco server itself. However, since our Web client is sending the CSP header, a malicious client could stop doing that. This potential threat could be blocked by putting the Web client behind a proxy that forcibly adds the required CSP header.
 
+## Google Cloud
+
+Customers that prefer to obtain containers from Google Cloud can do so by passing the --gcloud argument to all Pernosco commands (e.g. `pernosco --gcloud pull`, `pernosco --gcloud build ...`). When the --gcloud argument is used aws-cli does not need to be installed on the machine. You must separately configure gcloud by logging into the authorized individual or service account and then configuring docker to use gcloud as a credential helper for us-west1-docker.pkg.dev. e.g.
+
+```
+gcloud auth login
+gcloud auth configure-docker us-west1-docker.pkg.dev
+```
+
 ### Opting out of seccomp and AppArmor
 
 We disable seccomp syscall filtering and AppArmor in our containers using Docker's `seccomp=unconfined` and `apparmor=unconfined`. The former is necessary because Pernosco uses somewhat exotic syscalls such as `ptrace`, `mount`, `unshare` and `userfaultfd`. The latter is necessary because AppArmor can interfere with operations such as mounting tmpfs in our nested sandboxes. Our containers are still effectively confined by Docker's namespace sandboxing.
@@ -93,6 +102,8 @@ We disable seccomp syscall filtering and AppArmor in our containers using Docker
 Using the `--system-debuginfo` parameter to `pernosco build` and `pernosco package-build` causes packages of relevant system debuginfo to be downloaded from the specified S3 bucket or file system. If you use `s3://pernosco-system-debuginfo-overlays`, that will make requests to our S3 bucket that we could monitor, exposing which Ubuntu packages you might be using with Pernosco. If this is a problem, don't use `--system-debuginfo`, or mirror our bucket to your own bucket or local file server and pass its location to `--system-debuginfo`.
 
 If our bucket is missing some packages or distributions that you want debuginfo for, let us know. Currently we support a subset of library packages, on all Ubuntu releases. Access to `s3://pernosco-system-debuginfo-overlays` requires your on-prem AWS credentials.
+
+The system-debuginfo feature is not currently available to customers using Google Cloud.
 
 ## Distro-specific advice
 
