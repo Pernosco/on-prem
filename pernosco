@@ -51,6 +51,7 @@ build_subparser.add_argument("--system-debuginfo", action='append', default=[], 
 build_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
 build_subparser.add_argument("--gdb-script", help="Execute the provided gdb script during symbol and source loading.")
 build_subparser.add_argument("--compression-level", type=int, help="The zstd compression level to use.")
+build_subparser.add_argument("--skip-gdb-add-index", action='store_true', help="Don't build gdb indexes. (Increases build speed if you don't plan to use the embedded gdb.")
 
 package_build_subparser = arg_subparsers.add_parser("package-build", help="Prepare an rr trace for Pernosco building (e.g. before copying it elsewhere) by injecting necessary sources and debuginfo")
 package_build_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace to be prepared in-place")
@@ -66,6 +67,7 @@ only_build_subparser.add_argument("--shards", help="The number of shards to use 
 only_build_subparser.add_argument("--check-trace", action='store_true', help="Run some checks on the trace to debug Pernosco")
 only_build_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to builder's rr")
 only_build_subparser.add_argument("--compression-level", type=int, help="The zstd compression level to use.")
+only_build_subparser.add_argument("--skip-gdb-add-index", action='store_true', help="Don't build gdb indexes. (Increases build speed if you don't plan to use the embedded gdb.")
 
 serve_subparser = arg_subparsers.add_parser("serve", help="Serve Pernosco UI for an rr trace and Pernosco database")
 serve_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
@@ -413,6 +415,8 @@ def only_build_cmd() -> None:
     if args.check_trace:
         container_args.extend(["--check-trace"])
     container_args.extend(["on-prem", "/trace"])
+    if args.skip_gdb_add_index:
+        container_args.extend(["--skip-gdb-add-index"])
     container_args = ["-c", "sleep 0; db_builder %s"%" ".join(container_args)]
     env = {}
     if args.builder_rr_log:
