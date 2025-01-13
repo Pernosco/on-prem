@@ -50,7 +50,11 @@ At minimum the machine running the builder and appserver needs CPU support for A
 
 ## Parallelism
 
-Pernosco can be computationally expensive when processing long execution traces. Pernosco has been designed to be highly parallel and is capable of using a very large number of CPU cores. Parallelism during the build phase is controlled by the `--shards` argument to `pernosco build`. The default number of shards is 5, which can saturate an 18 core CPU. If you are running on fewer cores, you may want to try reducing the number of shards, and if you are running on more cores, increasing the number of shards. The smallest number of shards that can saturate your CPU is likely to give the best performance.
+Pernosco can be computationally expensive when processing long execution traces. Pernosco has been designed to be highly parallel and is capable of using a very large number of CPU cores. Parallelism during the build phase is controlled by the `--shards` argument to `pernosco build`. The default number of shards is 5, which can saturate an 18 core CPU (with default compression settings, see below). If you are running on fewer cores, you may want to try reducing the number of shards, and if you are running on more cores, increasing the number of shards. The smallest number of shards that can saturate your CPU is likely to give the best performance.
+
+## Compression
+
+Pernosco databases can be quite large for long execution traces. We use zstd compression internally to reduce the size of databases. The default compression level is 3, but it can be tuned in a range from 1 to 22 using the `--compression-level` argument to the `build` and `only-build` commands. Raising the compression level will consume additional CPU to produce smaller databases. Our compression parallelizes well, so if your chosen number of shards (see the parallelism section above) does not saturate a machine's CPU you may be able to achieve smaller databases with minimal additional runtime by increasing the compression level. Our experience is that raising the compression level beyond 9 consumes significant CPU for minimal gains.
 
 ## Processing recordings to a shared server
 
