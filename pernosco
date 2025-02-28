@@ -264,7 +264,7 @@ def start_container(image: ImageName, name: str, params: List[str], detach: bool
     cgroup_parent = determine_cgroup_parent()
     cmd = [args.container_runtime, 'run', '--cgroup-parent', cgroup_parent, '--name',
            "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:]), '--security-opt', 'seccomp=unconfined',
-           '--security-opt', 'apparmor=unconfined', '--tmpfs', '/tmp', '--env', 'RUST_BACKTRACE=full', '--init']
+           '--security-opt', 'apparmor=unconfined', '--tmpfs', '/tmp:exec', '--env', 'RUST_BACKTRACE=full', '--init']
     if detach:
         cmd.extend(['--detach'])
     if rm:
