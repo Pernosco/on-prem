@@ -32,6 +32,7 @@ global_opts_group.add_argument("-h", "--help", action='help', help="Show this he
 global_opts_group.add_argument("-x", dest='echo_commands', action='store_true', help="Echo spawned command lines")
 global_opts_group.add_argument("--no-pull", action='store_true', help="Don't try to pull under any circumstances")
 global_opts_group.add_argument("--log", help="(debug|info|warn|error):<file>: sets logging to the given level and writes the log to <file>.")
+global_opts_group.add_argument("--container-name-suffix", help="Use the provided suffix (instead of a randomly generated suffix) to name Pernosco containers. Uniqueness is the user's responsibility")
 global_opts_group.add_argument("--user", help="Set a userid (name or numeric) to run the container as")
 global_opts_group.add_argument("--container-runtime", help="Set docker or podman as the runtime (use podman at your own risk!)", default="docker")
 global_opts_group.add_argument("--gcloud", action='store_true', help="Use containers from Google Cloud Artifact Registry instead of AWS")
@@ -262,9 +263,14 @@ def start_container(image: ImageName, name: str, params: List[str], detach: bool
         read_only_mounts: List[Tuple[str, str]] = [], entrypoint: Optional[str] = None,
         publish_port: bool = False, publish_address: Optional[str] = None) -> ContainerId:
     cgroup_parent = determine_cgroup_parent()
+    if args.container_name_suffix is None:
+        container_name = "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:])
+    else:
+        container_name = "%s-%s"%(name, args.container_name_suffix)
     cmd = [args.container_runtime, 'run', '--cgroup-parent', cgroup_parent, '--name',
-           "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:]), '--security-opt', 'seccomp=unconfined',
-           '--security-opt', 'apparmor=unconfined', '--tmpfs', '/tmp:exec,mode=1777', '--env', 'RUST_BACKTRACE=full', '--init']
+           container_name, '--security-opt', 'seccomp=unconfined', '--security-opt',
+           'apparmor=unconfined', '--tmpfs', '/tmp:exec,mode=1777', '--env',
+           'RUST_BACKTRACE=full', '--init']
     if detach:
         cmd.extend(['--detach'])
     if rm:
