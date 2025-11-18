@@ -1,0 +1,25 @@
+[project]
+name = "pernosco-on-prem"
+version = "0.1.0"
+description = "Tools for running Pernosco on-premises"
+authors = [
+  { name = "Pernosco Ltd", email = "support@pernos.co" }
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+  "awscli>=1.38.38",
+]
+
+[project.scripts]
+pernosco = "pernosco_on_prem.pernosco:main"
+
+[dependency-groups]
+dev = [
+  "mypy>=1.14.1",
+  "selenium>=4.27.1",
+]
+
+[build-system]
+requires = ["uv_build"]
+build-backend = "uv_build"
