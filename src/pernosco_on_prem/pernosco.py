@@ -104,7 +104,7 @@ else:
 
 random.seed()
 
-with open(os.path.join(sys.path[0], "metadata.json"), "r") as f:
+with open(os.path.join(os.path.dirname(__file__), "metadata.json"), "r") as f:
     metadata = json.load(f)
 
 if args.gcloud:
