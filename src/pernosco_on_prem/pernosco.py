@@ -12,10 +12,10 @@ import socket
 import subprocess
 import sys
 
-import pernoscoshared.base as base
-import pernoscoshared.packaging as packaging
-import pernoscoshared.sources as sources
-import pernoscoshared.systemdebuginfo as systemdebuginfo
+import pernosco_on_prem.pernoscoshared.base as base
+import pernosco_on_prem.pernoscoshared.packaging as packaging
+import pernosco_on_prem.pernoscoshared.sources as sources
+import pernosco_on_prem.pernoscoshared.systemdebuginfo as systemdebuginfo
 
 ContainerId = NewType("ContainerId", str)
 ImageName = NewType("ImageName", str)
@@ -104,7 +104,7 @@ else:
 
 random.seed()
 
-with open(os.path.join(sys.path[0], "metadata.json"), "r") as f:
+with open(os.path.join(os.path.dirname(__file__), "metadata.json"), "r") as f:
     metadata = json.load(f)
 
 if args.gcloud:
@@ -514,23 +514,27 @@ def serve_cmd() -> None:
 
     wait_for_container(container_id)
 
-if args.subcommand == 'pull':
-    pull_cmd()
-elif args.subcommand == 'save-containers':
-    save_containers_cmd()
-elif args.subcommand == 'load-containers':
-    load_containers_cmd()
-elif args.subcommand == 'build':
-    build_cmd()
-elif args.subcommand == 'package-build':
-    package_build_cmd()
-elif args.subcommand == 'only-build':
-    only_build_cmd()
-elif args.subcommand == 'rr':
-    rr_cmd()
-elif args.subcommand == 'bom':
-    bom_cmd()
-elif args.subcommand == 'serve':
-    serve_cmd()
-else:
-    arg_parser.print_help()
+def main() -> None:
+    if args.subcommand == 'pull':
+        pull_cmd()
+    elif args.subcommand == 'save-containers':
+        save_containers_cmd()
+    elif args.subcommand == 'load-containers':
+        load_containers_cmd()
+    elif args.subcommand == 'build':
+        build_cmd()
+    elif args.subcommand == 'package-build':
+        package_build_cmd()
+    elif args.subcommand == 'only-build':
+        only_build_cmd()
+    elif args.subcommand == 'rr':
+        rr_cmd()
+    elif args.subcommand == 'bom':
+        bom_cmd()
+    elif args.subcommand == 'serve':
+        serve_cmd()
+    else:
+        arg_parser.print_help()
+
+if __name__ == "__main__":
+    main()

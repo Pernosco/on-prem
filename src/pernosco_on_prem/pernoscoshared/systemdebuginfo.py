@@ -8,7 +8,7 @@ import os
 import shutil
 import subprocess
 
-import pernoscoshared.base as base
+from . import base
 
 class TraceOverlayManifest(TypedDict, total=False):
     overlays: Mapping[str, List[str]]
