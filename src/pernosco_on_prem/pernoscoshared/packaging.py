@@ -5,7 +5,7 @@ import glob
 import os
 import shutil
 
-import pernoscoshared.base as base
+from . import base
 
 def rr_pack() -> None:
     print("Running 'rr pack'...")
