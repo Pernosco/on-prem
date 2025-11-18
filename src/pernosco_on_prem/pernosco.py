@@ -12,10 +12,10 @@ import socket
 import subprocess
 import sys
 
-import pernoscoshared.base as base
-import pernoscoshared.packaging as packaging
-import pernoscoshared.sources as sources
-import pernoscoshared.systemdebuginfo as systemdebuginfo
+import pernosco_on_prem.pernoscoshared.base as base
+import pernosco_on_prem.pernoscoshared.packaging as packaging
+import pernosco_on_prem.pernoscoshared.sources as sources
+import pernosco_on_prem.pernoscoshared.systemdebuginfo as systemdebuginfo
 
 ContainerId = NewType("ContainerId", str)
 ImageName = NewType("ImageName", str)
