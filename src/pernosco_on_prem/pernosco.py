@@ -514,23 +514,27 @@ def serve_cmd() -> None:
 
     wait_for_container(container_id)
 
-if args.subcommand == 'pull':
-    pull_cmd()
-elif args.subcommand == 'save-containers':
-    save_containers_cmd()
-elif args.subcommand == 'load-containers':
-    load_containers_cmd()
-elif args.subcommand == 'build':
-    build_cmd()
-elif args.subcommand == 'package-build':
-    package_build_cmd()
-elif args.subcommand == 'only-build':
-    only_build_cmd()
-elif args.subcommand == 'rr':
-    rr_cmd()
-elif args.subcommand == 'bom':
-    bom_cmd()
-elif args.subcommand == 'serve':
-    serve_cmd()
-else:
-    arg_parser.print_help()
+def main() -> None:
+    if args.subcommand == 'pull':
+        pull_cmd()
+    elif args.subcommand == 'save-containers':
+        save_containers_cmd()
+    elif args.subcommand == 'load-containers':
+        load_containers_cmd()
+    elif args.subcommand == 'build':
+        build_cmd()
+    elif args.subcommand == 'package-build':
+        package_build_cmd()
+    elif args.subcommand == 'only-build':
+        only_build_cmd()
+    elif args.subcommand == 'rr':
+        rr_cmd()
+    elif args.subcommand == 'bom':
+        bom_cmd()
+    elif args.subcommand == 'serve':
+        serve_cmd()
+    else:
+        arg_parser.print_help()
+
+if __name__ == "__main__":
+    main()
