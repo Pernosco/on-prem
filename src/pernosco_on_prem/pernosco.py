@@ -1,0 +1,536 @@
+#!/usr/bin/env python3
+
+from __future__ import annotations
+from typing import Optional, List, Pattern, Callable, Tuple, Dict, TypedDict, Any, Mapping, cast, Union, NewType
+
+import argparse
+import json
+import os
+import random
+import shutil
+import socket
+import subprocess
+import sys
+
+import pernoscoshared.base as base
+import pernoscoshared.packaging as packaging
+import pernoscoshared.sources as sources
+import pernoscoshared.systemdebuginfo as systemdebuginfo
+
+ContainerId = NewType("ContainerId", str)
+ImageName = NewType("ImageName", str)
+
+# Prerequisites (must be on PATH):
+#   AWS CLI
+#   docker
+#   rr
+
+arg_parser = argparse.ArgumentParser(add_help=False)
+arg_subparsers = arg_parser.add_subparsers(dest='subcommand', title='Subcommands')
+global_opts_group = arg_parser.add_argument_group("Global Options")
+global_opts_group.add_argument("-h", "--help", action='help', help="Show this help message and exit")
+global_opts_group.add_argument("-x", dest='echo_commands', action='store_true', help="Echo spawned command lines")
+global_opts_group.add_argument("--no-pull", action='store_true', help="Don't try to pull under any circumstances")
+global_opts_group.add_argument("--log", help="(debug|info|warn|error):<file>: sets logging to the given level and writes the log to <file>.")
+global_opts_group.add_argument("--container-name-suffix", help="Use the provided suffix (instead of a randomly generated suffix) to name Pernosco containers. Uniqueness is the user's responsibility")
+global_opts_group.add_argument("--user", help="Set a userid (name or numeric) to run the container as")
+global_opts_group.add_argument("--container-runtime", help="Set docker or podman as the runtime (use podman at your own risk!)", default="docker")
+global_opts_group.add_argument("--gcloud", action='store_true', help="Use containers from Google Cloud Artifact Registry instead of AWS")
+
+pull_subparser = arg_subparsers.add_parser("pull", help="Pull needed container images from Pernosco server. AWS credentials must be set in the environment.")
+pull_subparser = arg_subparsers.add_parser("save-containers", help="Save needed container images for Pernosco server. AWS credentials must be set in the environment.")
+pull_subparser = arg_subparsers.add_parser("load-containers", help="Load needed container images for Pernosco server. Internet connectivity not required.")
+
+build_subparser = arg_subparsers.add_parser("build", help="Build database for rr trace")
+build_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
+build_subparser.add_argument("--shards", help="The number of shards to use when building the database")
+build_subparser.add_argument("--skip-rr", action='store_true', help="Skip steps that require host rr ('rr pack')")
+build_subparser.add_argument("--check-trace", action='store_true', help="Run some checks on the trace to debug Pernosco")
+build_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to builder's rr")
+build_subparser.add_argument("--copy-sources", action='append', default=[], help="Copy sources under this directory into the recording")
+build_subparser.add_argument("--system-debuginfo", action='append', default=[], help="Pull system debuginfo from repository (e.g. s3://pernosco-system-debuginfo-overlays or /home/debuginfo-overlays-mirror)")
+build_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
+build_subparser.add_argument("--gdb-script", help="Execute the provided gdb script during symbol and source loading.")
+build_subparser.add_argument("--compression-level", type=int, help="The zstd compression level to use.")
+build_subparser.add_argument("--skip-gdb-add-index", action='store_true', help="Don't build gdb indexes. (Increases build speed if you don't plan to use the embedded gdb.")
+
+package_build_subparser = arg_subparsers.add_parser("package-build", help="Prepare an rr trace for Pernosco building (e.g. before copying it elsewhere) by injecting necessary sources and debuginfo")
+package_build_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace to be prepared in-place")
+package_build_subparser.add_argument("--skip-rr", action='store_true', help="Skip steps that require host rr ('rr pack')")
+package_build_subparser.add_argument("--copy-sources", action='append', default=[], help="Copy sources under this directory into the recording")
+package_build_subparser.add_argument("--system-debuginfo", action='append', default=[], help="Pull system debuginfo from repository (e.g. s3://pernosco-system-debuginfo-overlays or /home/debuginfo-overlays-mirror)")
+package_build_subparser.add_argument("--substitute", metavar='LIB=WITH_PATH', action='append', default=[], help="Override the DW_AT_comp_dir for compilation units of the named library to the named path. Adds WITH_PATH to the allowed source paths. LIB must be the basename of the original name of the library, e.g. 'libc-2.32.so'.")
+package_build_subparser.add_argument("--gdb-script", help="Execute the provided gdb script during symbol and source loading.")
+
+only_build_subparser = arg_subparsers.add_parser("only-build", help="Build a Pernosco database without the packaging steps (e.g. after it has been copied from elsewhere)")
+only_build_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
+only_build_subparser.add_argument("--shards", help="The number of shards to use when building the database")
+only_build_subparser.add_argument("--check-trace", action='store_true', help="Run some checks on the trace to debug Pernosco")
+only_build_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to builder's rr")
+only_build_subparser.add_argument("--compression-level", type=int, help="The zstd compression level to use.")
+only_build_subparser.add_argument("--skip-gdb-add-index", action='store_true', help="Don't build gdb indexes. (Increases build speed if you don't plan to use the embedded gdb.")
+
+serve_subparser = arg_subparsers.add_parser("serve", help="Serve Pernosco UI for an rr trace and Pernosco database")
+serve_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
+serve_subparser.add_argument("--storage", help="Use this directory to store persistent data (i.e. notebook data)")
+serve_subparser.add_argument("--tunnel", nargs='?', help="Expose Pernosco UI publicly on the specified port (see documentation for details)")
+serve_subparser.add_argument("--sources", action="append", help="Add this directory to the list of directories accessible to the container for serving source files. This can also be of the form <from-dir>=<to-dir> to indicate that source files relative to <from-dir> should be resolved relative to <to-dir>. These directory names must be absolute.")
+
+rr_subparser = arg_subparsers.add_parser("rr", help="Run the builder rr for diagnostic purposes")
+rr_subparser.add_argument("trace_dir", nargs='?', help="Directory of rr trace")
+rr_subparser.add_argument("rr_args", nargs=argparse.REMAINDER, help="rr parameters (use /trace to refer to the trace)")
+rr_subparser.add_argument("--builder-rr-log", help="Pass RR_LOG value to builder's rr")
+
+bom_subparser = arg_subparsers.add_parser("bom", help="Extract the Software Bill of Materials from the container")
+bom_subparser.add_argument("dest_dir", nargs='?', help="Directory to place the SBOM files in")
+
+args = arg_parser.parse_args()
+
+base.echo_commands = args.echo_commands
+
+# Global command-line options
+log_level = None
+log_file = None
+
+if args.log:
+    parts = args.log.split(':', 1)
+    if len(parts) < 2:
+        print("Log option not understood: %s"%args.log, file=sys.stderr)
+        sys.exit(1)
+    log_level = parts[0]
+    log_file = parts[1]
+else:
+    log_level = "error"
+
+random.seed()
+
+with open(os.path.join(sys.path[0], "metadata.json"), "r") as f:
+    metadata = json.load(f)
+
+if args.gcloud:
+    REPOSITORY_REGION = 'us-west1'
+    REPOSITORY_HOST = '%s-docker.pkg.dev'%REPOSITORY_REGION
+    BUILDER_REPOSITORY = '%s/pernosco/customers/db-builder'%REPOSITORY_HOST
+    SERVER_REPOSITORY = '%s/pernosco/customers/app-server'%REPOSITORY_HOST
+else:
+    REPOSITORY_REGION = 'us-east-2'
+    REPOSITORY_HOST = '643334553517.dkr.ecr.%s.amazonaws.com'%REPOSITORY_REGION
+    BUILDER_REPOSITORY = '%s/customers/db-builder'%REPOSITORY_HOST
+    SERVER_REPOSITORY = '%s/customers/app-server'%REPOSITORY_HOST
+BUILDER_IMAGE = ImageName("%s:%s"%(BUILDER_REPOSITORY, metadata['db_builder_revision']))
+SERVER_IMAGE = ImageName("%s:%s"%(SERVER_REPOSITORY, metadata['appserver_revision']))
+BUILDER_IMAGE_FILENAME = 'db-builder.%s.tar'%metadata['db_builder_revision']
+SERVER_IMAGE_FILENAME = 'app-server.%s.tar'%metadata['appserver_revision']
+PERNOSCO_ISOLATED_NETWORK = "pernosco-isolated-network"
+
+def check_docker_installed() -> None:
+    if not shutil.which(args.container_runtime):
+        print("Please install %s"%args.container_runtime, file=sys.stderr)
+        sys.exit(1)
+
+did_docker_login: bool = False
+
+def maybe_docker_login() -> None:
+    global did_docker_login
+    if did_docker_login:
+        return
+
+    if args.gcloud:
+        # Assume the user has properly set up their credential helper.
+        return
+
+    if not shutil.which('aws'):
+        print("Please install the AWS command-line tools using", file=sys.stderr)
+        print("  sudo pip3 install awscli --upgrade", file=sys.stderr)
+        print("(Distribution packages may fail due to https://github.com/aws/aws-cli/issues/2403.)", file=sys.stderr)
+        sys.exit(1)
+
+    if subprocess.call(['aws', 'sts', 'get-caller-identity'], stdout=subprocess.DEVNULL) != 0:
+        print("Pernosco AWS credentials must be available. If you want to try out Pernosco on-premises and have not yet contacted us for credentials, contact inquiries@pernos.co.", file=sys.stderr)
+        sys.exit(1)
+
+    cmd1 = ['aws', 'ecr', 'get-login-password', '--region', REPOSITORY_REGION]
+    cmd2 = [args.container_runtime, 'login', '--username', 'AWS', '--password-stdin', REPOSITORY_HOST]
+    base.maybe_echo(cmd1 + ["|"] + cmd2)
+    p1 = subprocess.Popen(cmd1, stdout=subprocess.PIPE)
+    assert p1.stdout
+    p2 = subprocess.Popen(cmd2, stdin=p1.stdout)
+    p1.stdout.close()
+    p2.communicate()
+    if p2.returncode != 0:
+        print("docker login failed with exit code %s"%p2.returncode, file=sys.stderr)
+        sys.exit(p2.returncode)
+    did_docker_login = True
+
+def do_pull(image: str) -> None:
+    if args.no_pull:
+        print("Need to pull %s but --no-pull specified, aborting"%image, file=sys.stderr)
+        sys.exit(1)
+    maybe_docker_login()
+    base.check_call([args.container_runtime, 'image', 'pull', image])
+
+def pull_cmd() -> None:
+    check_docker_installed()
+    do_pull(BUILDER_IMAGE)
+    do_pull(SERVER_IMAGE)
+
+def check_if_image_exists(image: ImageName) -> bool:
+    return not base.call([args.container_runtime, 'image', 'inspect', image], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+def pull_if_needed(image: ImageName) -> None:
+    if not check_if_image_exists(image):
+        do_pull(image)
+
+def do_save_container(image: ImageName, filename: str) -> None:
+    pull_if_needed(image)
+    ret = base.call([args.container_runtime, 'image', 'save', image, '-o', filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if ret != 0:
+        print("Failed to save %s, aborting"%image, file=sys.stderr)
+        sys.exit(1)
+
+def save_containers_cmd() -> None:
+    check_docker_installed()
+    do_save_container(BUILDER_IMAGE, BUILDER_IMAGE_FILENAME)
+    do_save_container(SERVER_IMAGE, SERVER_IMAGE_FILENAME)
+
+def do_load_container(filename: str) -> None:
+    ret = base.call([args.container_runtime, 'image', 'load', '-i', filename], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if ret != 0:
+        print("Failed to load %s, aborting"%filename, file=sys.stderr)
+        sys.exit(1)
+
+def load_container_if_needed(image: ImageName, filename: str) -> None:
+    if check_if_image_exists(image):
+        print('%s already loaded'%image)
+        return
+    do_load_container(filename)
+    if check_if_image_exists(image):
+        print("%s successfully loaded"%image)
+    else:
+        print("Cannot find %s after loading %s, aborting"%(image, filename), file=sys.stderr)
+        sys.exit(1)
+
+def load_containers_cmd() -> None:
+    check_docker_installed()
+    load_container_if_needed(BUILDER_IMAGE, BUILDER_IMAGE_FILENAME)
+    load_container_if_needed(SERVER_IMAGE, SERVER_IMAGE_FILENAME)
+
+def ensure_isolated_network_created() -> None:
+    ret = base.call([args.container_runtime, 'network', 'inspect', PERNOSCO_ISOLATED_NETWORK], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if ret == 0:
+        return
+    base.check_call([args.container_runtime, 'network', 'create', PERNOSCO_ISOLATED_NETWORK, "--internal"])
+
+def determine_cgroup_parent() -> str:
+    cgroups_version = 1
+    if args.container_runtime == 'docker':
+        cgroups_version = int(base.check_output([
+            args.container_runtime, 'system', 'info', '--format', '{{json .CgroupVersion}}'
+        ]).decode().strip('\n"'))
+    elif args.container_runtime == 'podman':
+        try:
+            cgroups_version = int(base.check_output([
+                args.container_runtime, 'system', 'info', '--format', '{{json .Host.CgroupsVersion}}'
+            ]).decode().strip('\n"'))
+        except subprocess.CalledProcessError as e:
+            # Older versions of podman had different capitalization.
+            try:
+                cgroups_version = int(base.check_output([
+                    args.container_runtime, 'system', 'info', '--format', '{{json .Host.CGroupsVersion}}'
+                ]).decode().strip('\n"'))
+            except:
+                raise e
+    else:
+        print("Can't tell whether %s is docker or podman"%args.container_runtime, file=sys.stderr)
+
+    if cgroups_version == 2:
+        return 'pernosco.slice'
+    elif cgroups_version == 1:
+        return '/pernosco/'
+    else:
+        print("Unsupported cgroups version %d, aborting"%cgroups_version, file=sys.stderr)
+        sys.exit(1)
+
+# Starts a container. We confine the container as much as possible.
+# The container is unable to connect to the outside world via its network,
+# but it can make arbitrary DNS requests. Unfortunately Docker doesn't
+# seem to give us a way to disable its internal DNS responder.
+# When 'network' is True, we create a network so the container can accept
+# incoming connections.
+# read_write_mounts and read_only_mounts are a list of pathname pairs (host_path, container_path)
+def start_container(image: ImageName, name: str, params: List[str], detach: bool = True, network: bool = False,
+        rm: bool = False, env: Dict[str, str] = {}, read_write_mounts: List[Tuple[str, str]] = [],
+        read_only_mounts: List[Tuple[str, str]] = [], entrypoint: Optional[str] = None,
+        publish_port: bool = False, publish_address: Optional[str] = None) -> ContainerId:
+    cgroup_parent = determine_cgroup_parent()
+    if args.container_name_suffix is None:
+        container_name = "%s-%s"%(name, hex(random.randrange(pow(2,64)))[2:])
+    else:
+        container_name = "%s-%s"%(name, args.container_name_suffix)
+    cmd = [args.container_runtime, 'run', '--cgroup-parent', cgroup_parent, '--name',
+           container_name, '--security-opt', 'seccomp=unconfined', '--security-opt',
+           'apparmor=unconfined', '--tmpfs', '/tmp:exec,mode=1777', '--env',
+           'RUST_BACKTRACE=full', '--init']
+    if detach:
+        cmd.extend(['--detach'])
+    if rm:
+        cmd.extend(['--rm'])
+    if args.user:
+        cmd.extend(['--user', args.user])
+    if log_level:
+        cmd.extend(['--env', "RUST_LOG=%s"%log_level])
+    for e in env:
+        cmd.extend(['--env', "%s=%s"%(e, env[e])])
+    if entrypoint:
+        cmd.extend(['--entrypoint', entrypoint])
+    for mount in read_write_mounts:
+        cmd.extend(['--mount', 'type=bind,bind-propagation=rslave,src=%s,dst=%s'%mount])
+    for mount in read_only_mounts:
+        cmd.extend(['--mount', 'type=bind,bind-propagation=rslave,readonly,src=%s,dst=%s'%mount])
+    if network:
+        ensure_isolated_network_created()
+        cmd.extend(['--network', PERNOSCO_ISOLATED_NETWORK])
+    else:
+        cmd.extend(['--network', 'none'])
+    if publish_port:
+        cmd.extend(['--publish', '%s:3000/tcp'%publish_address])
+    cmd.append(image)
+    cmd.extend(params)
+    # Avoid using 'encoding' parameter to check_output because it was only
+    # added in Python 3.6.
+    return ContainerId(base.check_output(cmd).decode().strip())
+
+def stop_container(container_id: ContainerId) -> None:
+    base.call([args.container_runtime, 'stop', container_id])
+
+def cleanup_container(container_id: ContainerId) -> None:
+    base.check_call([args.container_runtime, 'rm', '--force', '--volumes', container_id], stdout=subprocess.DEVNULL)
+
+def wait_for_container(container_id: ContainerId) -> None:
+    p = base.Popen([args.container_runtime, 'logs', '--follow', container_id], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    assert p.stdout
+    ret = None
+    f = None
+    if log_file:
+        f = open(log_file, "wb")
+    try:
+        for line in p.stdout:
+            if f:
+                if line.startswith(b"^ERROR:"):
+                    sys.stderr.buffer.write(line)
+                f.write(line)
+            else:
+                if line.startswith(b"^ERROR:"):
+                    sys.stderr.buffer.write(line)
+                else:
+                    sys.stdout.buffer.write(line)
+    except KeyboardInterrupt:
+        stop_container(container_id)
+        ret = -2
+        pass
+    finally:
+        if f:
+            f.close()
+
+    if ret == None:
+        # Avoid using 'encoding' parameter to check_output because it was only
+        # added in Python 3.6.
+        ret = int(base.check_output([args.container_runtime, 'wait', container_id]).decode().rstrip())
+
+    cleanup_container(container_id)
+
+    if ret:
+        print("Container %s exited with exit code %d"%(container_id, ret), file=sys.stderr)
+        if ret > 0:
+            sys.exit(ret)
+        sys.exit(1)
+
+def container_ip_address(container_id: ContainerId) -> str:
+    output = json.loads(base.check_output([args.container_runtime, 'inspect', container_id]))
+    ret = output[0]['NetworkSettings']['Networks'][PERNOSCO_ISOLATED_NETWORK]['IPAddress']
+    assert isinstance(ret, str)
+    return ret
+
+def trace_dir() -> str:
+    if args.trace_dir:
+        assert isinstance(args.trace_dir, str)
+        return args.trace_dir
+    if "_RR_TRACE_DIR" in os.environ:
+        return "%s/latest-trace"%os.environ['_RR_TRACE_DIR']
+    if "HOME" in os.environ:
+        return "%s/.local/share/rr/latest-trace"%os.environ['HOME']
+    print("Can't determine default trace dir", file=sys.stderr)
+    sys.exit(1)
+
+def set_default_user_sources() -> None:
+    assert base.trace_dir
+    path = "%s/sources.fallback"%base.trace_dir
+    if os.path.exists(path):
+        return
+    default = [{'priority': -10, 'files': [{'url': '/sources/', 'at': '/'}]}]
+    with open(path, "w") as f:
+        json.dump(default, f)
+
+def collect_source_dirs() -> Tuple[List[str], Dict[str, str]]:
+    source_dirs = []
+    comp_dir_substitutions = {}
+    for s in args.substitute:
+        (library, path) = s.split('=', maxsplit=1)
+        if not path:
+            print("Missing path in %s"%s, file=sys.stderr)
+            sys.exit(1)
+        source_dirs.append(os.path.realpath(path))
+        comp_dir_substitutions[library] = path
+    for d in args.copy_sources:
+        source_dirs.append(os.path.realpath(d))
+    return (source_dirs, comp_dir_substitutions)
+
+def build_cmd() -> None:
+    package_build_cmd()
+    only_build_cmd()
+
+def package_build_cmd() -> None:
+    base.trace_dir = trace_dir()
+    if not args.skip_rr:
+        if not shutil.which('rr'):
+            print("Please install `rr` master and make sure it's on your $PATH.", file=sys.stderr)
+            sys.exit(1)
+        packaging.rr_pack()
+
+    sources.package_debuginfo_files(args.gdb_script)
+    packaging.package_libthread_db()
+    (source_dirs, comp_dir_substitutions) = collect_source_dirs()
+    if len(source_dirs) > 0:
+        repo_paths = sources.package_source_files(source_dirs, source_dirs, comp_dir_substitutions, None, args.gdb_script)
+        sources.package_gdbinit(repo_paths, "%s/gdbinit"%base.trace_dir)
+    if len(args.system_debuginfo) > 0:
+        build_ids = systemdebuginfo.collect_candidate_build_ids()
+        for path in args.system_debuginfo:
+            systemdebuginfo.apply_system_debuginfo(path, build_ids)
+    set_default_user_sources()
+
+def only_build_cmd() -> None:
+    base.trace_dir = trace_dir()
+    check_docker_installed()
+    pull_if_needed(BUILDER_IMAGE)
+    base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', base.trace_dir])
+    read_write_mounts = [(base.trace_dir, "/trace")]
+    container_args = ["--empty-umask"]
+    if args.shards:
+        container_args.extend(["--shards", args.shards])
+    if args.check_trace:
+        container_args.extend(["--check-trace"])
+    container_args.extend(["on-prem", "/trace"])
+    if args.skip_gdb_add_index:
+        container_args.extend(["--skip-gdb-add-index"])
+    container_args = ["-c", "sleep 0; db_builder %s"%" ".join(container_args)]
+    env = {}
+    if args.builder_rr_log:
+        env['RR_LOG'] = args.builder_rr_log
+        env['RR_LOG_FILE'] = "/trace/rr.log"
+    if args.compression_level:
+        if args.compression_level < 1 or args.compression_level > 22:
+            print("--compression-level '%d' is not in range [1, 22]"%args.compression_level, file=sys.stderr)
+            sys.exit(1)
+        env['PERNOSCO_ZSTD_COMPRESSION_LEVEL'] = args.compression_level
+    container_id = start_container(BUILDER_IMAGE, "db_builder", container_args,
+        env=env, entrypoint="/bin/bash", read_write_mounts=read_write_mounts)
+    wait_for_container(container_id)
+
+def rr_cmd() -> None:
+    base.trace_dir = trace_dir()
+    check_docker_installed()
+    pull_if_needed(BUILDER_IMAGE)
+    base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', base.trace_dir])
+    read_write_mounts = [(base.trace_dir, "/trace")]
+    env = {}
+    if args.builder_rr_log:
+        env['RR_LOG'] = args.builder_rr_log
+    container_id = start_container(BUILDER_IMAGE, "db_builder", args.rr_args,
+        env=env, entrypoint="/usr/local/bin/rr", read_write_mounts=read_write_mounts)
+    wait_for_container(container_id)
+
+def bom_cmd() -> None:
+    dest_dir = os.getcwd()
+    if args.dest_dir:
+        assert isinstance(args.dest_dir, str)
+        dest_dir = args.dest_dir
+    check_docker_installed()
+    pull_if_needed(BUILDER_IMAGE)
+    pull_if_needed(SERVER_IMAGE)
+    builder_bom = start_container(BUILDER_IMAGE, "db_builder-bom", ["-c", "cat /sbom.json"],
+        detach=False, rm=True, entrypoint="/bin/bash")
+    server_bom = start_container(SERVER_IMAGE, "app_server-bom", ["-c", "cat /sbom.json"],
+        detach=False, rm=True, entrypoint="/bin/bash")
+    with open(os.path.join(dest_dir, 'db_builder.json'), "w") as f:
+        print(builder_bom, file=f)
+    with open(os.path.join(dest_dir, 'app_server.json'), "w") as f:
+        print(server_bom, file=f)
+
+def serve_cmd() -> None:
+    base.trace_dir = trace_dir()
+    check_docker_installed()
+    tunnel_port = 3000
+    tunnel_address = "0.0.0.0"
+    if args.tunnel:
+        tunnel_args = args.tunnel.rsplit(':', 1)
+        port_arg = tunnel_args.pop()
+        try:
+            tunnel_port = int(port_arg)
+        except ValueError:
+            print("'%s' is not a valid port"%port_arg, file=sys.stderr)
+            sys.exit(1)
+
+        if tunnel_args:
+            tunnel_address = "%s"%tunnel_args.pop()
+
+    pull_if_needed(SERVER_IMAGE)
+    read_write_mounts = []
+    container_args = ["--empty-umask", "--standalone", "--host", "0.0.0.0"]
+    if args.storage:
+        base.call(['chmod', '--quiet', '--recursive', 'ugo+rwX', args.storage])
+        read_write_mounts.append((args.storage, "/pernosco/storage"))
+        container_args.extend(["--app-storage", "/pernosco/storage"])
+    read_only_mounts = [(base.trace_dir, "/pernosco/database")]
+    if args.sources:
+        container_args.extend(["--serve-sources", "/sources"])
+        for s in args.sources:
+            dirs = s.split('=', 1)
+            for d in dirs:
+                if not os.path.isabs(d):
+                    print("Source path %s is not absolute, aborting."%d, file=sys.stderr)
+                    sys.exit(1)
+            if len(dirs) == 1:
+                read_only_mounts.append((dirs[0], "/sources%s"%dirs[0]))
+            else:
+                read_only_mounts.append((dirs[1], "/sources%s"%dirs[0]))
+    env = {'PERNOSCO_ENABLE_VARIABLES_ANNOTATIONS': '0'}
+    container_id = start_container(SERVER_IMAGE, "app_server", container_args,
+        env=env, network=True, read_only_mounts=read_only_mounts, read_write_mounts=read_write_mounts, publish_port=args.tunnel, publish_address="%s:%s"%(tunnel_address, tunnel_port))
+    ip_address = container_ip_address(container_id)
+    print("Appserver launched at http://%s:3000/index.html"%ip_address, flush=True)
+    if args.tunnel:
+        print("Appserver tunneled to http://%s:%s/index.html"%(tunnel_address, tunnel_port))
+
+    wait_for_container(container_id)
+
+if args.subcommand == 'pull':
+    pull_cmd()
+elif args.subcommand == 'save-containers':
+    save_containers_cmd()
+elif args.subcommand == 'load-containers':
+    load_containers_cmd()
+elif args.subcommand == 'build':
+    build_cmd()
+elif args.subcommand == 'package-build':
+    package_build_cmd()
+elif args.subcommand == 'only-build':
+    only_build_cmd()
+elif args.subcommand == 'rr':
+    rr_cmd()
+elif args.subcommand == 'bom':
+    bom_cmd()
+elif args.subcommand == 'serve':
+    serve_cmd()
+else:
+    arg_parser.print_help()
