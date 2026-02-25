@@ -9,7 +9,7 @@ import subprocess
 import sys
 import zipfile
 
-import pernoscoshared.base as base
+from . import base
 
 UrlGenerator = Callable[[str], Tuple[str, Optional[str]]]
 

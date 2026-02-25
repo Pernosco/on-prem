@@ -23,7 +23,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 # -- git
 # -- Selenium-python
 #
-# Run from the on-prem repo directory.
+# Run from the on-prem repo directory: `uv run tests/main.py`
 
 class CustomException(Exception):
     pass
@@ -119,7 +119,7 @@ class script_succeeds(object):
 url = None
 server = None
 
-pernosco_cmd = ['./pernosco', '-x', '--log', 'info:/proc/self/fd/2']
+pernosco_cmd = ['pernosco', '-x', '--log', 'info:/proc/self/fd/2']
 if args.no_pull:
     pernosco_cmd.append('--no-pull')
 
@@ -147,7 +147,7 @@ build()
 record()
 
 if not args.no_pull:
-    subprocess.check_call(['./pernosco', 'pull'])
+    subprocess.check_call(['pernosco', 'pull'])
 
 subprocess.check_call(pernosco_cmd + ['--user', '1200', 'build', '--check-trace', '--system-debuginfo', 's3://pernosco-system-debuginfo-overlays'], env=clean_env)
 
